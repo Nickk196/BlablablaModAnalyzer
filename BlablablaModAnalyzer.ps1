@@ -20,7 +20,7 @@ Write-Host ""
 Write-Host "   ┌──────────────────────────────────────────────────────────────────────────────────────┐" -ForegroundColor DarkGray
 Write-Host "   │                                                                                      │" -ForegroundColor DarkGray
 Write-Host "   │" -ForegroundColor DarkGray -NoNewline; Write-Host "      BlablablaModAnalyzer " -ForegroundColor Magenta -NoNewline
-Write-Host "│ " -ForegroundColor DarkGray -NoNewline; Write-Host "v1.3" -ForegroundColor DarkGray -NoNewline
+Write-Host "│ " -ForegroundColor DarkGray -NoNewline; Write-Host "v2.0" -ForegroundColor DarkGray -NoNewline
 Write-Host "                                          │" -ForegroundColor DarkGray
 Write-Host "   │" -ForegroundColor DarkGray -NoNewline; Write-Host "      Minecraft Mod Security Scanner " -ForegroundColor DarkMagenta -NoNewline
 Write-Host "│" -ForegroundColor DarkGray
@@ -45,10 +45,34 @@ if (-not (Test-Path $modsPath -PathType Container)) {
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown"); exit 1
 }
 
-$activeModules = @("JVM Scan", "String Analysis", "Deep Scan", "Obfuscation", "Disallowed Mods")
+$activeModules = @("JVM Scan", "String Analysis", "Deep Scan", "Obfuscation", "Disallowed Mods", "Mixin Injection", "Bytecode Hooks", "Network Exfil")
 Write-Host ""; Write-Host "  Modules  : " -ForegroundColor DarkGray -NoNewline
 Write-Host ($activeModules -join "  ·  ") -ForegroundColor Magenta
 Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+# ═════════════════════════════════════════════════════════
+#  CLEAN MOD WHITELIST  (never flag these for HTTP / OBF)
+# ═════════════════════════════════════════════════════════
+$script:cleanModWhitelist = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+@(
+    "sodium","lithium","iris","fabric-api","modmenu","ferrite-core","lazydfu","starlight",
+    "entityculling","memoryleakfix","krypton","c2me-fabric","smoothboot-fabric","immediatelyfast",
+    "noisium","indium","sodium-extra","rei","jei","appleskin","dynamic-fps","fpsreducer",
+    "IAS","IAS-Fabric","ias","ias-fabric","optiboxes","ukulib","TierTagger","tiertagger",
+    "silicon","Silicon","motionblur","ravenclawspingequalizer","threadtweak","entity_texture_features",
+    "citresewn","rendervis","modelfix","phosphor","noisium","immediatelyfast",
+    "creamykeys","CreamyKeys","vmp","vmp-fabric","lithium","journeymap","xaerominimap","xaeroworldmap",
+    "betterthirdperson","carpet","tweakermore","syncmatica","minihud","litematica","malilib",
+    "replaymod","optifine","optifabric","continuity","lambdynamiclights","wthit","jade",
+    "architectury","cloth-config","kotlin-for-forge","geckolib","patchouli"
+) | ForEach-Object { [void]$script:cleanModWhitelist.Add($_) }
+
+# Helper: strip version suffix from jar base name
+function Get-ModBaseName { param([string]$FileName)
+    $base = [System.IO.Path]::GetFileNameWithoutExtension($FileName)
+    $base = $base -replace '[-_][0-9][0-9A-Za-z.\-+_]*$', ''
+    return $base.ToLower()
+}
 
 # ═════════════════════════════════════════════════════════
 #  DATA LISTS
@@ -74,26 +98,34 @@ $suspiciousPatterns = @(
 )
 
 $script:cheatStrings = @(
+    # ── Crystal / Anchor / Totem automation
     "AutoCrystal","autocrystal","auto crystal","cw crystal","dontPlaceCrystal","dontBreakCrystal",
     "AutoHitCrystal","autohitcrystal","canPlaceCrystalServer","healPotSlot",
     "AutoAnchor","autoanchor","auto anchor","DoubleAnchor","hasGlowstone","HasAnchor",
     "anchortweaks","anchor macro","safe anchor","safeanchor","SafeAnchor","AirAnchor","anchorMacro",
     "AutoTotem","autototem","auto totem","InventoryTotem","inventorytotem","HoverTotem","hover totem","legittotem",
     "AutoPot","autopot","auto pot","speedPotSlot","strengthPotSlot","AutoArmor","autoarmor","auto armor","AutoPotRefill",
+    # ── Shield / weapon bypass
     "preventSwordBlockBreaking","preventSwordBlockAttack","ShieldDisabler","ShieldBreaker","Breaking shield with axe...",
     "AutoDoubleHand","autodoublehand","auto double hand","Failed to switch to mace after axe!",
     "AutoMace","MaceSwap","SpearSwap","StunSlam","JumpReset","axespam","axe spam",
     "EndCrystalItemMixin","findKnockbackSword","attackRegisteredThisClick",
+    # ── Aim / trigger
     "AimAssist","aimassist","aim assist","triggerbot","trigger bot","Silent Rotations","SilentRotations",
+    # ── Inventory tricks
     "FakeInv","swapBackToOriginalSlot","FakeLag","fakePunch","Fake Punch",
+    # ── Web macros / optimizer
     "webmacro","web macro","AntiWeb","AutoWeb","lvstrng","dqrkis",
     "WalksyCrystalOptimizerMod","WalksyOptimizer","WalskyOptimizer","autoCrystalPlaceClock",
+    # ── Misc combat
     "AutoFirework","ElytraSwap","FastXP","FastExp","NoJumpDelay",
     "PackSpoof","Antiknockback","catlean","AuthBypass","obfuscatedAuth","LicenseCheckMixin",
     "BaseFinder","ItemExploit","FreezePlayer","LWFH Crystal","KeyPearl","LootYeeter","FastPlace","AutoBreach",
+    # ── Block breaking hooks (cheat-specific)
     "setBlockBreakingCooldown","getBlockBreakingCooldown","blockBreakingCooldown",
     "onBlockBreaking","setItemUseCooldown","setSelectedSlot","invokeDoAttack","invokeDoItemUse","invokeOnMouseButton",
     "onPushOutOfBlocks","onIsGlowing","Automatically switches to sword when hitting with totem",
+    # ── GUI strings found in cheat clients
     "arrayOfString","POT_CHEATS","Dqrkis Client","Entity.isGlowing","Activate Key","Click Simulation","On RMB",
     "No Count Glitch","No Bounce","NoBounce","Place Delay","Break Delay","Fast Mode","Place Chance",
     "Break Chance","Stop On Kill","damagetick","Anti Weakness","Particle Chance","Trigger Key",
@@ -108,6 +140,7 @@ $script:cheatStrings = @(
     "Horizontal Aim Speed","Vertical Aim Speed","Include Head","Web Delay","Holding Web",
     "Not When Affects Player","Hit Delay","Require Hold Axe","placeInterval","breakInterval","stopOnKill",
     "activateOnRightClick","holdCrystal","Macro Key",
+    # ── Standard hack module names
     "KillAura","ClickAura","MultiAura","ForceField","LegitAura","AimBot","AutoAim","SilentAim","AimLock","HeadSnap",
     "CrystalAura","AnchorAura","AnchorFill","AnchorPlace","BedAura","AutoBed","BedBomb","BedPlace",
     "BowAimbot","BowSpam","AutoBow","AutoCrit","CritBypass","AlwaysCrit","CriticalHit",
@@ -123,44 +156,67 @@ $script:cheatStrings = @(
     "TargetHUD","ReachDisplay","DoubleClicker","JitterClick","ButterflyClick","CPSBoost",
     "ChestStealer","InvManager","InvMovebypass","AutoSprint","AntiAFK","FakeLatency","FakePing",
     "SpoofRotation","PositionSpoof","GameSpeed","SpeedTimer",
+    # ── Anti-cheat bypass strings
     "GrimBypass","VulcanBypass","MatrixBypass","AACBypass","VerusDisabler","IntaveBypass","WatchdogBypass",
+    # ── Packet manipulation
     "PacketMine","PacketWalk","PacketSneak","PacketCancel","PacketDupe","PacketSpam",
+    # ── Malware / stealer / RAT indicators
     "SelfDestruct","HideClient","SessionStealer","TokenLogger","TokenGrabber","DiscordToken",
     "ReverseShell","C2Server","KeyLogger","StashFinder","TrailFinder",
+    # ── Native hook libraries (imgui = cheat overlay)
     "imgui.binding","imgui.gl3","imgui.glfw","JNativeHook","GlobalScreen","NativeKeyListener",
+    # ── Refmap names used by known cheat clients
     "client-refmap.json","cheat-refmap.json","phantom-refmap.json",
+    # ── Base64-encoded cheat URLs
     "aHR0cDovL2FwaS5ub3ZhY2xpZW50LmxvbC93ZWJob29rLnR4dA==",
+    # ── Known cheat client package paths
     "meteordevelopment","cc/novoline","com/alan/clients","club/maxstats","wtf/moonlight",
     "me/zeroeightsix/kami","net/ccbluex","today/opai","net/minecraft/injection",
     "org/chainlibs/module/impl/modules","xyz/greaj","com/cheatbreaker",
+    # ── Known cheat client names / domains
     "doomsdayclient","DoomsdayClient","doomsday.jar","novaclient","api.novaclient.lol",
     "WalksyOptimizer","vape.gg","vapeclient","VapeClient","VapeLite","intent.store","IntentClient",
     "rise.today","riseclient.com","meteor-client","meteorclient","meteordevelopment.meteorclient",
     "liquidbounce","fdp-client","net.ccbluex","novoware","novoclient","aristois","impactclient","azura",
     "pandaware","moonClient","astolfo","futureClient","konas","rusherhack","inertia","exhibition",
+    # ── Stealer / malware keywords
     "sessionstealer","tokengrabber","webhookstealer","cookiethief","discordstealer","keylogger",
     "iplogger","cryptominer","reverseShell","backdoormod","exploitmod","ratmod","ransomware",
     "sendWebhook","exfiltrate","connectBack","callHome","grabToken","stealSession","accountstealer",
     "discord/token","grabber/cookie","grab_cookies","stealerutils","sendToWebhook","postDiscord",
-    "webhookurl","discordwebhook","Runtime.exec","cmd.exe","powershell.exe",
+    "webhookurl","discordwebhook",
+    # ── Runtime code execution (only flag if present in non-whitelisted mod)
+    "Runtime.exec","cmd.exe",
+    # ── Crash / grief tools
     "crasher","lagmachine","booksploit","signcrasher","entityspammer","nukermod","worldnuker",
     "tntmod","bedexplode","anchorexplode","injectClass","modifyBytecode","hookMethod",
-    "attachAgent","VirtualMachine.attach","FLOW_OBFUSCATION","STRING_ENCRYPTION","RESOURCE_ENCRYPTION",
+    "attachAgent","VirtualMachine.attach",
+    # ── Obfuscator signatures in string form
+    "FLOW_OBFUSCATION","STRING_ENCRYPTION","RESOURCE_ENCRYPTION",
     "skidfuscator","me/itzsomebody","radon/transform","bozar/","paramorphism","zelix/klassmaster",
     "allatori","dasho","com/icqm/smoke","dev.krypton","dev.gambleclient","com.cheatbreaker",
+    # ── Version / brand spoofing
     "fakeVersion","spoofVersion","brandOverride","overrideBrand","fakeClientBrand","brandSpoof","versionSpoof",
     "net.minecraft.client.ClientBrandRetriever","ServerboundCustomPayloadPacket","MC|Brand","minecraft:brand",
+    # ── Packet cancellation / injection
     "cancelPacket","dropPacket","suppressPacket","blockPacket","spoofPacket","injectPacket",
     "sendFakePacket","sendSilentPacket","bypassAC","bypass_ac","evadeAC","evadeAnticheat",
     "isGrimAC","isNoCheat","isAAC","isSpartanAC","isIntave","grimBypass","ncpBypass","aacBypass",
     "spartanBypass","checkAnticheat","detectAnticheat","getAnticheat","GrimBypass","NCPBypass",
-    "AACBypass","IntaveBypass","setTimerSpeed","timerSpeed","Timer.timerSpeed","setTickRate",
+    "AACBypass","IntaveBypass",
+    # ── Timer / tick manipulation
+    "setTimerSpeed","timerSpeed","Timer.timerSpeed","setTickRate",
     "overrideTickRate","fakeTickCount","tickBoost","hitboxExpand","expandHitbox",
+    # ── KB / velocity manipulation
     "suppressKnockback","cancelKnockback","noKnockback","setVelocity(0","zeroVelocity","ignoreKnockback",
-    "antiKnockback","KnockbackModifier","noVelocity","renderPlayerSpoofed","spoofRender","hideFromRender",
+    "antiKnockback","KnockbackModifier","noVelocity",
+    # ── Render spoofing
+    "renderPlayerSpoofed","spoofRender","hideFromRender",
     "fakeGlowing","GlowBypass","glowBypass","baritone.bypass","pathfindBypass","suppressPathfind",
+    # ── Auth bypass
     "bypassLicense","fakeAuth","spoofSession","AltManager","grimac","GrimAC","grim-api","ac.grim",
     "game.grim","setGrimFlag","rotationBypass","fakeYaw","fakePitch","spoofYaw","spoofPitch",
+    # ── Full-width (unicode-obfuscated) cheat strings
     "ＡｕﾄＣﾞｲｽﾀ｡ﾞ","Ａｕﾄ Ｃﾞｲｽﾀ｡ﾞ","ＡｕﾄＨｲﾄＣﾞｲｽﾀ｡ﾞ","ＡｕﾄＡｮｃﾞｮﾞ","Ａｕﾄ Ａｮｃﾞｮﾞ",
     "＄ｏｕｂﾞﾞｅＡｮｃﾞｮﾞ","＄ｏｕｂﾞﾞｅ Ａｮｃﾞｮﾞ","ＳａﾇｪＡＡｮｃﾞｮﾞ","Ｓａｆｅ Ａｮｃﾞｮﾞ",
     "Ａｮｃﾞｮﾞ Ｍ｡ｃﾞｮﾞ","anchorMacro","ＡｕﾄＴｵﾃｪｭ","Ａｕﾄ Ｔｵﾃｪｭ","Ｈｵｶﾞﾘ Ｔｵﾃｪｭ",
@@ -172,64 +228,99 @@ $script:cheatStrings = @(
     "Ａｵﾄ Ｂﾚｾ｡ｃﾞ","Ｆｲｵｪｪﾞｽﾞ Ｐﾞｱｴﾞｪｲ"
 )
 
+# These are CONTEXT-ONLY: only flagged when found alongside real cheat hits
+$script:contextOnlyStrings = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+@(
+    "HttpClient","HttpURLConnection","openConnection","URLConnection",
+    "getOutputStream","getInputStream","ProcessBuilder","powershell.exe",
+    "Runtime.exec","cmd.exe"
+) | ForEach-Object { [void]$script:contextOnlyStrings.Add($_) }
+
 $script:knownCheatFileTokens = @(
-    "doomsday","doomsdayclient","doomsday-client","doomsday_client","darik","dariks","dqrkis","dqrk",
-    "vape","vapeclient","vape-client","vape_client","vapelite","vape-lite","vapepro",
-    "meteor","meteorclient","meteor-client","meteor_client","meteordev","meteor-dev",
-    "liquidbounce","liquid-bounce","liquid_bounce","liquidb","liquidbounceclient",
-    "wurst","wurst-client","wurst_client","wurstclient","wurst7","sigma","sigmaclient","sigma-client",
-    "sigmahack","sigmamod","rise","riseclient","rise-client","risehack","future","futureclient",
-    "future-client","futurehack","konas","konasclient","konas-client","konashack","inertia",
-    "inertiaclient","inertia-client","inertiahack","exhibition","exhibitionclient","exhibitionhack",
-    "pandaware","panda-ware","panda_ware","pandaclient","astolfo","astolfoclient","astolfo-client",
-    "astolfohack","rusherhack","rusher-hack","rusher_hack","rushermod","novaclient","nova-client",
-    "nova_client","novaware","novahack","impact","impactclient","impact-client","impacthack","aristois",
-    "aristois-client","aristoisclient","azura","azuraclient","azura-client","azurahack","moonlight",
-    "moonlightclient","moon-client","moonhack","intent","intentclient","intent-client","intentstore",
-    "intenthack","prestige","prestigeclient","prestige-client","prestigehack","cheatbreaker",
-    "cheat-breaker","cheatbreakerclient","kami","kamiclient","kami-client","kamiblue","kami-blue",
-    "fdp","fdpclient","fdp-client","fdphack","xray","xrayclient","xray-mod","xrayhack","xraymod",
-    "baritone","baritoneclient","baritonehack","skidfuscator","skid-client","skidclient","skidware",
-    "noob","nooby","cheat","hack","hacked","hacker","hackme","inject","injector","loader","payload",
-    "bypass","cracked","crack","stealer","grabber","logger","keylog","token","exploit","malware","rat",
-    "sabotage","sabotageclient","omega","omegaclient","omega-client","flex","flexclient","flex-client",
-    "flexhack","swift","swiftclient","swift-client","swifthack","vertex","vertexclient","vertex-client",
-    "vertexhack","vapor","vaporclient","vapor-client","vaporhack","blaze","blazeclient","blaze-client",
-    "blazehack","noble","nobleclient","noble-client","noblehack","royal","royalclient","royal-client",
-    "royalhack","spirit","spiritclient","spirit-client","spirithack","phantom","phantomclient",
-    "phantom-client","phantomhack","ghost","ghostclient","ghost-client","ghosthack","ghostware",
-    "shadow","shadowclient","shadow-client","shadowhack","crystal","crystalclient","crystal-client",
-    "crystalware","drip","dripclient","drip-client","driphack","dripware","tenacity","tenacityclient",
-    "tenacity-client","thunder","thunderclient","thunder-client","thunderhack","storm","stormclient",
-    "storm-client","stormhack","abyss","abyssclient","abyss-client","abysshack","raven","ravenclient",
-    "raven-client","ravenhack","ravenb","themis","themisclient","themishack","saber","saberclient",
-    "saber-client","saberhack","blade","bladeclient","blade-client","bladehack","toxic","toxicclient",
-    "toxic-client","toxichack","breach","breachclient","breach-client","breachhack","clarity",
-    "clarityclient","clarity-client","motion","motionclient","motion-client","motionhack","flux",
-    "fluxclient","flux-client","fluxhack","fluxbe","strafe","strafeclient","strafe-client","strafehack",
-    "aura","auraclient","aura-client","aurahack","nemesis","nemesisclient","nemesis-client",
-    "nemesishack","nexus","nexusclient","nexus-client","nexushack","crypt","cryptclient","crypt-client",
-    "crypthack","cryptware","nodus","nodusclient","nodus-client","nodushack","hyperium","hyperiumclient",
-    "hyperiumhack","salwyrr","salwyrrclient","salwyrrhack","bleach","bleachclient","bleachhack",
-    "bleach-hack","erosion","erosionclient","erosionhack","entropy","entropyclient","entropyhack",
-    "entropy-client","ares","aresclient","ares-client","areshack","areswarez","wolfram","wolframclient",
-    "wolfram-client","wolframhack","pyro","pyroclient","pyro-client","pyrohack","kira","kiraclient",
-    "kira-client","kirahack","solace","solaceclient","solace-client","solacehack","serenity",
-    "serenityclient","serenityhack","polaris","polarisclient","polaris-client","lucid","lucidclient",
-    "lucid-client","lucidhack","comet","cometclient","comet-client","comethack","aurora","auroraclient",
-    "aurora-client","aurorahack","twilight","twilightclient","twilight-hack","quantum","quantumclient",
-    "quantum-client","quantumhack","pulsar","pulsarclient","pulsar-client","pulsarhack","radium",
-    "radiumclient","radium-client","radiumhack","prism","prismclient","prism-client","prismhack","zenith",
-    "zenithclient","zenith-client","zenithhack","apex","apexclient","apex-client","apexhack","orion",
-    "orionclient","orion-client","orionhack","inferno","infernoclient","inferno-client","infernohack",
-    "eclipse","eclipseclient","eclipse-client","eclipsehack","rage","rageclient","rage-client",
-    "ragehack","ragebot","autoclicker","auto-clicker","auto_clicker","clickbot","clicker","killaura",
-    "kill-aura","kill_aura","aurabot","aimbot","aim-bot","aim_bot","aimassist","triggerbot","esp",
-    "wallhack","wall-hack","nofallhack","bhop","bunny-hop","speedhack","speed-hack","flyhack","fly-hack",
-    "scaffold","scaffoldhack","scaffold-hack","dllinjector","dll-injector","dll_injector","injectorpro",
-    "bypassed","bypassclient","bypass-client","bypasshack","nulled","nulledclient","nulled-client",
-    "nulledhack","leaked","leakedclient","leaked-client","leakedhack","skid","skidclient","skid-client",
-    "skidhack"
+    "doomsday","doomsdayclient","dqrkis","dqrk",
+    "vape","vapeclient","vape-client","vapelite",
+    "meteor","meteorclient","meteor-client",
+    "liquidbounce","liquid-bounce",
+    "wurst","wurst-client","sigma","sigmaclient",
+    "rise","riseclient","future","futureclient",
+    "konas","inertia","exhibition",
+    "pandaware","astolfo","rusherhack",
+    "novaclient","nova-client","novaware",
+    "impact","impactclient","aristois","azura",
+    "intent","intentclient","intentstore",
+    "prestige","prestigeclient",
+    "cheatbreaker","kami","kamiblue","fdp","fdpclient",
+    "skidfuscator","skidware",
+    "killaura","aimbot","triggerbot","wallhack","speedhack","flyhack",
+    "xrayhack","xraymod","autocrystal","crystalaura",
+    "wolframclient","wolfram-client",
+    "bleachhack","bleach-hack",
+    "aristois","impactclient",
+    "themisclient","ravenb",
+    "fluxclient","flux-client",
+    "strafeclient","strafe-client"
+)
+
+# ── NEW: Mixin injection signatures — class names / annotations used exclusively by cheat clients
+$script:cheatMixinSignatures = @(
+    # Entity / player hooks that legit mods never touch this way
+    "ClientPlayerEntityMixin","ClientPlayerInteractionManagerMixin","GameRendererMixin",
+    "MouseHandlerMixin","KeyboardHandlerMixin","MinecraftMixin","MultiPlayerGameModeMixin",
+    "InGameHudMixin","HandledScreenMixin","AbstractClientPlayerEntityMixin",
+    # Specific mixin targets seen in combat cheats
+    "LivingEntityMixin","PlayerEntityMixin","CombatTrackerMixin",
+    "ItemStackMixin","SwordItemMixin","AxeItemMixin","ShieldItemMixin",
+    "EndCrystalEntityMixin","ExplosionMixin","ExplosionMixinAccessor",
+    "RespawnAnchorBlockMixin","BedBlockMixin",
+    # Anti-cheat specific bypass mixins
+    "MovementInputMixin","ClientConnectionMixin","NetworkHandlerMixin",
+    "ChunkDeltaUpdateS2CPacketMixin","PlayerMoveC2SPacketMixin",
+    # Render ESP mixins
+    "WorldRendererMixin","EntityRenderDispatcherMixin","VertexConsumerMixin",
+    "LevelRendererMixin","RenderSystemMixin","BufferBuilderMixin"
+)
+
+# ── NEW: Bytecode-level hooks — method signatures found only in cheat code
+$script:bytecodeHookSignatures = @(
+    # Direct attack / use bypasses
+    "invokeAttackEntity","invokeUseItem","invokeStopUsingItem","callAttackEntity","callUseItem",
+    "invokeDoAttack","invokeDoItemUse","invokeOnMouseButton",
+    # Cooldown manipulation
+    "getAttackCooldownProgress","resetLastAttackedTicks","setItemUseCooldown",
+    # Slot switching
+    "setSelectedSlot","setCurrentItem","switchToSlot",
+    # Velocity zero-out patterns
+    "setVelocity(0","addVelocity(0","motionX = 0","motionZ = 0",
+    # Timer hack
+    "Timer.timerSpeed","setTimerSpeed","timerSpeed","tickLength",
+    # Packet-level cancels
+    "cancelPacket","dropPacket","suppressPacket","injectPacket","spoofPacket",
+    "sendFakePacket","sendSilentPacket",
+    # Reflection-based hooks that mods never legitimately use
+    "getDeclaredMethod(","setAccessible(true)","unsafe.allocateInstance","Unsafe.getUnsafe",
+    # Dynamic class loading into MC context
+    "defineClass(","loadClass(","ClassLoader.loadClass",
+    # Agent attachment (RAT/injector indicator)
+    "VirtualMachine.attach","attachAgent","agentmain","premain"
+)
+
+# ── NEW: Network exfiltration signatures
+$script:networkExfilSignatures = @(
+    # Webhook / token grabbers
+    "discord.com/api/webhooks","discordapp.com/api/webhooks",
+    "sendWebhook","postToWebhook","webhookUrl","WEBHOOK_URL","discordWebhook",
+    "grabToken","stealSession","TokenGrabber","SessionStealer","CookieThief",
+    # IP loggers
+    "grabify","iplogger.org","2no.co","leakinfo.org","blasze.tk",
+    "canarytokens","whereismyip",
+    # Pastebin / hastebin C2
+    "pastebin.com/raw","hastebin.com/raw","ghostbin.com",
+    # Known cheat client API endpoints
+    "api.novaclient.lol","vape.gg/api","intent.store/api","rise.today/api",
+    "liquidbounce.net/api","meteordevelopment.org","rusherhack.org/api",
+    # Generic exfil patterns
+    "exfiltrate","connectBack","callHome","reverseShell","C2Server","c2server",
+    "sendToServer(","postData(","uploadData("
 )
 
 $deepCheatStrings = @(
@@ -237,33 +328,38 @@ $deepCheatStrings = @(
     "getAttackCooldownProgress","resetLastAttackedTicks","ModuleManager","FeatureManager","HackList",
     "CommandManager.register","GuiHacks","ClickGui","AltManager","SessionStealer","spoofPacket",
     "cancelPacket","dropPacket","CPacketHeldItemChange","ServerboundMovePlayerPacket","Timer.timerSpeed",
-    "timerSpeed","setTimerSpeed","Runtime.getRuntime().exec(","com.sun.jndi.rmi.object.trustURLCodebase=true",
-    "com.sun.jndi.ldap.object.trustURLCodebase=true","-Xrunjdwp:","agentlib:jdwp",
+    "timerSpeed","setTimerSpeed","Runtime.getRuntime().exec(",
+    "com.sun.jndi.rmi.object.trustURLCodebase=true","com.sun.jndi.ldap.object.trustURLCodebase=true",
+    "-Xrunjdwp:","agentlib:jdwp",
     "dev.gambleclient","xyz.greaj","org.chainlibs","dev.krypton","Dqrkis","dqrkis","lvstrng",
     "getDeclaredMethod(","setAccessible(true)","unsafe.allocateInstance","Unsafe.getUnsafe",
-    "setHardTarget","mixinBypass","Runtime.exec"
+    "setHardTarget","mixinBypass","Runtime.exec",
+    # NEW deep strings
+    "defineClass(","VirtualMachine.attach","agentmain(",
+    "discord.com/api/webhooks","discordapp.com/api/webhooks",
+    "pastebin.com/raw","grabify","iplogger.org",
+    "ClientPlayerEntityMixin","EndCrystalEntityMixin","ExplosionMixinAccessor",
+    "ModuleManager","HackManager","CheatManager","FeatureRegistry",
+    "toggleModule","isModuleEnabled","getModule(","registerModule(",
+    "setTimerSpeed","timerBoost","tickBoost",
+    "autocrystal.place","autocrystal.break","crystal.place.delay","crystal.break.delay"
 )
 
-# HTTP/network strings that are only suspicious when found TOGETHER WITH other cheat hits
-# (legitimate mods like sodium, modmenu, IAS all use HTTP for update checks — not malicious)
-$script:httpContextStrings = @(
-    "HttpClient","HttpURLConnection","openConnection","URLConnection",
-    "getOutputStream","getInputStream","ProcessBuilder","powershell.exe"
-)
-
-# Known-clean mod filenames/IDs — HTTP hits on these are always suppressed
-$script:cleanModWhitelist = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-@(
-    "sodium","lithium","iris","fabric-api","modmenu","ferrite-core","lazydfu","starlight",
-    "entityculling","memoryleakfix","krypton","c2me-fabric","smoothboot-fabric","immediatelyfast",
-    "noisium","indium","sodium-extra","rei","jei","appleskin","dynamic-fps","fpsreducer",
-    "IAS","IAS-Fabric","ias","ias-fabric","optiboxes","ukulib","TierTagger","tiertagger",
-    "silicon","Silicon","motionblur","ravenclawspingequalizer","threadtweak","entity_texture_features",
-    "citresewn","rendervis","modelfix","phosphor","noisium","immediatelyfast"
-) | ForEach-Object { [void]$script:cleanModWhitelist.Add($_) }
+$patternRegex       = [regex]::new('(?<![A-Za-z])(' + (($suspiciousPatterns | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')(?![A-Za-z])', [System.Text.RegularExpressions.RegexOptions]::Compiled)
+$cheatStringSet     = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+foreach ($s in $script:cheatStrings) { [void]$cheatStringSet.Add($s) }
+$deepCheatStringSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+foreach ($s in $deepCheatStrings) { [void]$deepCheatStringSet.Add($s) }
+$mixinSigSet        = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+foreach ($s in $script:cheatMixinSignatures) { [void]$mixinSigSet.Add($s) }
+$bytecodeSigSet     = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+foreach ($s in $script:bytecodeHookSignatures) { [void]$bytecodeSigSet.Add($s) }
+$networkExfilSet    = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+foreach ($s in $script:networkExfilSignatures) { [void]$networkExfilSet.Add($s) }
+$fullwidthRegex     = [regex]::new("[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]{2,}", [System.Text.RegularExpressions.RegexOptions]::Compiled)
+$tokenRegex         = [regex]::new('(?<![a-z])(' + (($script:knownCheatFileTokens | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')(?![a-z])', [System.Text.RegularExpressions.RegexOptions]::Compiled)
 
 $disallowedMods = @{
-    # ── Automation / Inventory
     "auto-clicker"                   = @{ Names = @("Auto Clicker","AutoClicker","autoclicker","auto-clicker","Auto-Clicker") }
     "freecam"                        = @{ Names = @("Freecam","freecam","FreeCam","Free Cam") }
     "tweakeroo"                      = @{ Names = @("Tweakeroo","tweakeroo") }
@@ -280,14 +376,12 @@ $disallowedMods = @{
     "client-crafting"                = @{ Names = @("Client Crafting","ClientCrafting") }
     "enchant-order"                  = @{ Names = @("Enchant Order","EnchantOrder") }
     "inventory-sorter"               = @{ Names = @("Inventory Sorter","InventorySorter") }
-    # ── Camera / View
     "shoulder-surfing-reloaded"      = @{ Names = @("Shoulder Surfing","ShoulderSurfing","Shoulder Surfing Reloaded") }
     "better-third-person"            = @{ Names = @("Better Third Person","BetterThirdPerson") }
     "camera-utils"                   = @{ Names = @("Camera Utils","CameraUtils") }
     "free-look"                      = @{ Names = @("FreeLook","Free Look","freelook","free-look") }
     "perspective-mod"                = @{ Names = @("Perspective Mod","PerspectiveMod","perspective-mod") }
     "freelook"                       = @{ Names = @("FreeLook","Freelook","free look") }
-    # ── HUD / UI
     "double-hotbar"                  = @{ Names = @("Double Hotbar","DoubleHotbar") }
     "slot-cycler"                    = @{ Names = @("Slot Cycler","SlotCycler") }
     "multi-key-bindings"             = @{ Names = @("Multi Key Bindings","MultiKeyBindings") }
@@ -297,7 +391,6 @@ $disallowedMods = @{
     "litematica"                     = @{ Names = @("Litematica","litematica") }
     "schematica"                     = @{ Names = @("Schematica","schematica") }
     "elytrafly"                      = @{ Names = @("ElytraFly","Elytra Fly","elytrafly") }
-    # ── Movement / Speed Tweaks
     "toggle-sneak-sprint"            = @{ Names = @("Toggle Sneak","Toggle Sprint","ToggleSneak","ToggleSprint") }
     "no-input-lag-tick-rate"         = @{ Names = @("No Input Lag","NoInputLag","TickRateOptimizer") }
     "quick-elytra"                   = @{ Names = @("Quick Elytra","QuickElytra") }
@@ -305,11 +398,9 @@ $disallowedMods = @{
     "autosneak"                      = @{ Names = @("AutoSneak","Auto Sneak","autosneak") }
     "stepup"                         = @{ Names = @("StepUp","Step Up","stepup","step-up") }
     "noslow"                         = @{ Names = @("NoSlow","No Slow","noslow","no-slow") }
-    # ── Bridging / Building
     "bridging-mod"                   = @{ Names = @("Bridging Mod","BridgingMod","SlothPixel") }
     "scaffold"                       = @{ Names = @("Scaffold","scaffold","ScaffoldMod") }
     "tower"                          = @{ Names = @("Tower","TowerMod","tower-mod") }
-    # ── Crystal / Totem / Combat Macros
     "clickcrystals"                  = @{ Names = @("ClickCrystals","clickcrystals","Click Crystals") }
     "walksycrystaloptimizer"         = @{ Names = @("WalksyCrystalOptimizer","WalksyOptimizer","WalskyOptimizer") }
     "hazel-crystal-optimizer"        = @{ Names = @("Hazel Crystal Optimizer","HazelCrystalOptimizer") }
@@ -321,17 +412,14 @@ $disallowedMods = @{
     "totem-macro"                    = @{ Names = @("Totem Macro","TotemMacro","totem-macro") }
     "pot-macro"                      = @{ Names = @("Pot Macro","PotMacro","pot-macro","AutoPotMacro") }
     "combat-macro"                   = @{ Names = @("Combat Macro","CombatMacro","combat-macro") }
-    # ── Hotbar / Swap Utilities
     "arrow-shifter"                  = @{ Names = @("Arrow Shifter","ArrowShifter") }
     "quick-hotkeys"                  = @{ Names = @("Quick Hotkeys","QuickHotkeys") }
     "d-hand"                         = @{ Names = @("D-hand","Dhand","D Hand") }
     "frostbyte-improved-inventory"   = @{ Names = @("Frostbyte's Improved Inventory","FrostbyteInventory") }
     "inventory-management"           = @{ Names = @("Inventory Management","InventoryManagement") }
     "sort"                           = @{ Names = @("Sort","sort","SortMod") }
-    # ── XP / Level Macros
     "fast-xp"                        = @{ Names = @("Fast Xp","FastXP","FastXp") }
     "quick-exp"                      = @{ Names = @("Quick Exp","QuickExp") }
-    # ── Protocol / Version Spoofing
     "vivecraft"                      = @{ Names = @("Vivecraft","vivecraft","ViveCraft") }
     "geyser"                         = @{ Names = @("Geyser","geyser","GeyserMC","geysermc","GeyserFabric","GeyserForge") }
     "viafabric"                      = @{ Names = @("ViaFabric","viafabric","ViaFabricPlus","viafabricplus","ViaFabric+") }
@@ -339,7 +427,6 @@ $disallowedMods = @{
     "viaversion"                     = @{ Names = @("ViaVersion","viaversion") }
     "viabackwards"                   = @{ Names = @("ViaBackwards","viabackwards") }
     "bedrockify"                     = @{ Names = @("Bedrockify","bedrockify") }
-    # ── Minimap / Radar / X-Ray
     "xaeros-minimap"                 = @{ Names = @("Xaero's Minimap","XaerosMinimap","xaeros-minimap","Xaero Minimap") }
     "xaeros-world-map"               = @{ Names = @("Xaero's World Map","XaerosWorldMap","xaeros-world-map") }
     "journeymap"                     = @{ Names = @("JourneyMap","journeymap","Journey Map") }
@@ -347,7 +434,6 @@ $disallowedMods = @{
     "radar"                          = @{ Names = @("Radar","radar","RadarMod","radar-mod") }
     "xray"                           = @{ Names = @("XRay","xray","X-Ray","x-ray","XRayMod") }
     "cave-finder"                    = @{ Names = @("Cave Finder","CaveFinder","cave-finder") }
-    # ── Misc / Exploits
     "clientcommands"                 = @{ Names = @("clientcommands","ClientCommands") }
     "flours-various-tweaks"          = @{ Names = @("Flour's Various Tweaks","FloursTweaks","flours-tweaks") }
     "omniscience"                    = @{ Names = @("Omniscience","omniscience") }
@@ -364,17 +450,9 @@ $disallowedMods = @{
     "speedhack"                      = @{ Names = @("SpeedHack","speedhack","speed-hack","SpeedMod") }
 }
 
-$patternRegex      = [regex]::new('(?<![A-Za-z])(' + (($suspiciousPatterns | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')(?![A-Za-z])', [System.Text.RegularExpressions.RegexOptions]::Compiled)
-$cheatStringSet    = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-foreach ($s in $script:cheatStrings) { [void]$cheatStringSet.Add($s) }
-$deepCheatStringSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-foreach ($s in $deepCheatStrings) { [void]$deepCheatStringSet.Add($s) }
-$fullwidthRegex    = [regex]::new("[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]{2,}", [System.Text.RegularExpressions.RegexOptions]::Compiled)
-$tokenRegex        = [regex]::new('(' + (($script:knownCheatFileTokens | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')', [System.Text.RegularExpressions.RegexOptions]::Compiled)
-
-# ═══════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════
 #  HELPER FUNCTIONS
-# ═══════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════
 function Get-ShannonEntropy { param([byte[]]$Data)
     if ($Data.Length -eq 0) { return 0.0 }
     $freq = @{}; foreach ($b in $Data) { $freq[$b] = ($freq[$b] -as [int]) + 1 }
@@ -431,16 +509,137 @@ function Get-MinecraftStatus {
     return [PSCustomObject]@{ Running = $false; PID = 0; Uptime = "-"; RAM = "-" }
 }
 
-# ═══════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════
+#  MIXIN INJECTION SCAN  (NEW)
+# ═════════════════════════════════════════════════════════
+function Invoke-MixinInjectionScan { param([string]$FilePath, [bool]$IsWhitelisted)
+    $hits = [System.Collections.Generic.List[string]]::new()
+    if ($IsWhitelisted) { return $hits }
+    try {
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
+        # 1. Check all mixin JSON config files for suspicious target classes
+        $mixinJsonEntries = @($zip.Entries | Where-Object { $_.FullName -match '\.mixins\.json$|mixin.*\.json$' })
+        foreach ($mje in $mixinJsonEntries) {
+            try {
+                $st  = $mje.Open(); $buf = New-Object System.IO.MemoryStream; $st.CopyTo($buf); $st.Close()
+                $txt = [System.Text.Encoding]::UTF8.GetString($buf.ToArray()); $buf.Dispose()
+                # Check for suspiciously large mixin configs (legit mods rarely inject 50+ mixins)
+                $mixinMatches = [regex]::Matches($txt, '"[A-Za-z][A-Za-z0-9_$]+"')
+                if ($mixinMatches.Count -gt 60) { $hits.Add("Excessive mixin count ($($mixinMatches.Count)) in $($mje.FullName) — typical of cheat clients") }
+                # Check for direct injection into core MC rendering / input classes
+                foreach ($sig in $mixinSigSet) {
+                    if ($txt -match [regex]::Escape($sig)) { $hits.Add("Cheat mixin target: $sig") }
+                }
+                # Suspicious refmap names
+                if ($txt -match '"refmap"\s*:\s*"(client|cheat|hack|phantom|ghost|shadow)[^"]*"') {
+                    $hits.Add("Suspicious refmap name: $($Matches[1])")
+                }
+            } catch {}
+        }
+        # 2. Scan class bytecode for mixin-related cheat patterns
+        $classEntries = @($zip.Entries | Where-Object { $_.FullName -match '\.class$' } | Select-Object -First 50)
+        foreach ($ce in $classEntries) {
+            try {
+                $st  = $ce.Open(); $buf = New-Object System.IO.MemoryStream; $st.CopyTo($buf); $st.Close()
+                $raw = $buf.ToArray(); $buf.Dispose()
+                $a   = [System.Text.Encoding]::ASCII.GetString($raw)
+                foreach ($sig in $mixinSigSet) {
+                    if ($a.Contains($sig)) { $hits.Add("Mixin bytecode hit: $sig"); break }
+                }
+            } catch {}
+        }
+        $zip.Dispose()
+    } catch {}
+    return $hits
+}
+
+# ═════════════════════════════════════════════════════════
+#  BYTECODE HOOK SCAN  (NEW)
+# ═════════════════════════════════════════════════════════
+function Invoke-BytecodeHookScan { param([string]$FilePath, [bool]$IsWhitelisted)
+    $hits = [System.Collections.Generic.List[string]]::new()
+    if ($IsWhitelisted) { return $hits }
+    try {
+        $zip     = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
+        $classes = @($zip.Entries | Where-Object { $_.FullName -match '\.class$' })
+        $sampled = $classes | Select-Object -First ([math]::Min(60, $classes.Count))
+        foreach ($ce in $sampled) {
+            try {
+                $st  = $ce.Open(); $buf = New-Object System.IO.MemoryStream; $st.CopyTo($buf); $st.Close()
+                $raw = $buf.ToArray(); $buf.Dispose()
+                $a   = [System.Text.Encoding]::ASCII.GetString($raw)
+                foreach ($sig in $bytecodeSigSet) {
+                    if ($a.Contains($sig)) { $hits.Add("Bytecode hook: $sig"); break }
+                }
+                # Check for unsafe reflection usage that cheat clients use for bypassing
+                if ($a -match 'setAccessible.true.' -and $a -match 'getDeclaredField|getDeclaredMethod') {
+                    $hits.Add("Unsafe reflection in $([System.IO.Path]::GetFileName($ce.FullName))")
+                }
+                # Dynamic class definition (runtime injection)
+                if ($a -match 'defineClass' -and $a -match 'ClassLoader') {
+                    $hits.Add("Dynamic class injection detected")
+                }
+            } catch {}
+        }
+        $zip.Dispose()
+    } catch {}
+    # Deduplicate
+    $unique = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($h in $hits) { [void]$unique.Add($h) }
+    return [System.Collections.Generic.List[string]]$unique
+}
+
+# ═════════════════════════════════════════════════════════
+#  NETWORK EXFILTRATION SCAN  (NEW)
+# ═════════════════════════════════════════════════════════
+function Invoke-NetworkExfilScan { param([string]$FilePath, [bool]$IsWhitelisted)
+    $hits = [System.Collections.Generic.List[string]]::new()
+    try {
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
+        $scanExt = '\.(class|json|toml|yml|yaml|txt|cfg|properties|xml|html|js|kt|groovy)$|MANIFEST\.MF'
+        foreach ($entry in $zip.Entries) {
+            if ($entry.FullName -notmatch $scanExt) { continue }
+            try {
+                $st  = $entry.Open(); $buf = New-Object System.IO.MemoryStream; $st.CopyTo($buf); $st.Close()
+                $raw = $buf.ToArray(); $buf.Dispose()
+                $a   = [System.Text.Encoding]::ASCII.GetString($raw)
+                $u   = [System.Text.Encoding]::UTF8.GetString($raw)
+                foreach ($sig in $networkExfilSet) {
+                    if ($a.Contains($sig) -or $u.Contains($sig)) {
+                        $hits.Add("Network exfil: $sig"); break
+                    }
+                }
+                # Context-only strings: only flag if not whitelisted
+                if (-not $IsWhitelisted) {
+                    if ($a -match 'powershell\.exe' -or $a -match 'cmd\.exe /c') {
+                        $hits.Add("Shell execution string: powershell/cmd")
+                    }
+                    if ($a -match 'Runtime\.exec\(' -or $a -match 'ProcessBuilder') {
+                        $hits.Add("OS process execution: Runtime.exec / ProcessBuilder")
+                    }
+                }
+            } catch {}
+        }
+        $zip.Dispose()
+    } catch {}
+    $unique = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($h in $hits) { [void]$unique.Add($h) }
+    return [System.Collections.Generic.List[string]]$unique
+}
+
+# ═════════════════════════════════════════════════════════
 #  ENHANCED OBFUSCATION SCAN
-# ═══════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════
 function Invoke-ObfuscationFlags { param([string]$FilePath)
     $flags = [System.Collections.Generic.List[string]]::new()
-    $outerModId = $null
+    # Skip whitelisted mods entirely for obfuscation HTTP flags
+    $baseName = Get-ModBaseName -FileName ([System.IO.Path]::GetFileName($FilePath))
+    $isWhitelisted = $script:cleanModWhitelist.Contains($baseName)
     try {
         $zip = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
         $modInfo    = Get-Mod-Info-From-Jar -jarPath $FilePath
         $outerModId = $modInfo.ModId
+        if ($outerModId -and $script:cleanModWhitelist.Contains($outerModId)) { $isWhitelisted = $true }
         $classes    = @($zip.Entries | Where-Object { $_.FullName -match '\.class$' })
         $totalClassCount = $classes.Count
         if ($totalClassCount -eq 0) { $zip.Dispose(); return $flags }
@@ -472,9 +671,12 @@ function Invoke-ObfuscationFlags { param([string]$FilePath)
             } catch {}
         }
 
-        if ($runtimeExecFound -and $obfPct -ge 25) { $flags.Add("Runtime.exec() in obfuscated code — can run arbitrary OS commands") }
-        if ($httpDownloadFound)                     { $flags.Add("HTTP file download — fetches and writes files from a remote server at runtime") }
-        if ($httpExfilFound)                        { $flags.Add("HTTP POST exfiltration — sends system data to an external server") }
+        # Only flag HTTP if not whitelisted
+        if (-not $isWhitelisted) {
+            if ($runtimeExecFound -and $obfPct -ge 25) { $flags.Add("Runtime.exec() in obfuscated code — can run arbitrary OS commands") }
+            if ($httpDownloadFound -and $obfPct -ge 20) { $flags.Add("HTTP file download in obfuscated code — fetches files from remote server at runtime") }
+            if ($httpExfilFound)                        { $flags.Add("HTTP POST exfiltration — sends system data to an external server") }
+        }
         if ($totalClassCount -ge 10 -and $obfPct -ge 25) { $flags.Add("Heavy obfuscation — $obfPct% of classes use single-letter path segments") }
         if ($numPct -ge 20) { $flags.Add("Numeric class names — $numPct% of classes have numeric-only names") }
         if ($uniPct -ge 10) { $flags.Add("Unicode class names — $uniPct% of classes use non-ASCII characters") }
@@ -483,7 +685,8 @@ function Invoke-ObfuscationFlags { param([string]$FilePath)
             "lazydfu","starlight","entityculling","memoryleakfix","krypton","c2me-fabric","smoothboot-fabric",
             "immediatelyfast","noisium","threadtweak","indium","rendervis","entity_texture_features",
             "citresewn","sodium-extra","rei","jei","journeymap","xaerominimap","xaeroworldmap","lithium",
-            "phosphor","appleskin","modelfix","dynamic-fps","betterthirdperson","fpsreducer")
+            "phosphor","appleskin","modelfix","dynamic-fps","betterthirdperson","fpsreducer",
+            "motionblur","ravenclawspingequalizer","silicon","creamykeys","carpet","malilib")
         $dangerCount = ($flags | Where-Object { $_ -match "Runtime\.exec|HTTP file download|HTTP POST|Heavy obfuscation" }).Count
         if ($outerModId -and ($knownLegitModIds -contains $outerModId) -and $dangerCount -gt 0) {
             $flags.Add("Fake mod identity — claims to be '$outerModId' but contains dangerous code")
@@ -525,14 +728,22 @@ function Invoke-ObfuscationFlags { param([string]$FilePath)
     return $flags
 }
 
-# ═══════════════════════════════════════════════════════
-#  MOD SIGNATURE SCAN
-# ═══════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════
+#  MOD SIGNATURE SCAN  (false-positive-safe)
+# ═════════════════════════════════════════════════════════
 function Get-ModSignature { param([string]$Path, [bool]$ScanStrings = $true, [bool]$ScanDeep = $true)
     $hits = [System.Collections.Generic.HashSet[string]]::new()
     $entropyWarnings = [System.Collections.Generic.List[string]]::new()
+
+    $baseName      = Get-ModBaseName -FileName ([System.IO.Path]::GetFileName($Path))
+    $isWhitelisted = $script:cleanModWhitelist.Contains($baseName)
+
     try {
         $zip  = [System.IO.Compression.ZipFile]::OpenRead($Path)
+        # Also check mod ID from fabric.mod.json
+        $mi = Get-Mod-Info-From-Jar -jarPath $Path
+        if ($mi.ModId -and $script:cleanModWhitelist.Contains($mi.ModId)) { $isWhitelisted = $true }
+
         foreach ($e in $zip.Entries) {
             foreach ($m in $patternRegex.Matches($e.FullName)) { [void]$hits.Add("P|$($m.Value)") }
         }
@@ -556,7 +767,11 @@ function Get-ModSignature { param([string]$Path, [bool]$ScanStrings = $true, [bo
                 $u   = [System.Text.Encoding]::UTF8.GetString($raw)
                 foreach ($m in $patternRegex.Matches($a)) { [void]$hits.Add("P|$($m.Value)") }
                 if ($ScanStrings) {
-                    foreach ($cs in $cheatStringSet) { if ($a.Contains($cs) -or $u.Contains($cs)) { [void]$hits.Add("S|$cs") } }
+                    foreach ($cs in $cheatStringSet) {
+                        # Skip context-only strings for whitelisted mods
+                        if ($isWhitelisted -and $script:contextOnlyStrings.Contains($cs)) { continue }
+                        if ($a.Contains($cs) -or $u.Contains($cs)) { [void]$hits.Add("S|$cs") }
+                    }
                     foreach ($m in $fullwidthRegex.Matches($u)) { [void]$hits.Add("F|$($m.Value)") }
                 }
                 if ($ScanDeep) {
@@ -574,6 +789,15 @@ function Get-ModSignature { param([string]$Path, [bool]$ScanStrings = $true, [bo
         foreach ($n in $nested) { try { $n.Dispose() } catch {} }
         $zip.Dispose()
     } catch {}
+
+    # ── Context-only string suppression:
+    # If the ONLY hits are context-only strings and there are no other real cheat hits, clear them
+    $realHits = @($hits | Where-Object {
+        if ($_ -notmatch '^S\|') { return $true }
+        $s = $_.Substring(2)
+        return -not $script:contextOnlyStrings.Contains($s)
+    })
+    if ($realHits.Count -eq 0) { $hits.Clear() }
 
     # Full-width deduplication
     $fwPool = @($script:cheatStrings | Where-Object { $_ -cmatch "[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]" })
@@ -660,9 +884,9 @@ function Find-DisallowedMods { param([string]$Path, [array]$JarFiles)
     return $found
 }
 
-# ═══════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════
 #  JVM ARGUMENT SCANNER
-# ═══════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════
 function Test-JvmArguments {
     $findings   = [System.Collections.Generic.List[PSObject]]::new()
     $foundFlags = [System.Collections.Generic.HashSet[string]]::new()
@@ -670,7 +894,6 @@ function Test-JvmArguments {
     if ($javaProcs.Count -eq 0) { return $findings }
 
     $suspiciousArgsList = @(
-        # Fabric mod injection
         @('-Dfabric\.addMods=',                  'FABRIC_ADD_MODS',              'HIGH',   'Injects extra Fabric mod JARs at runtime'),
         @('-Dfabric\.loadMods=',                 'FABRIC_LOAD_MODS',             'HIGH',   'Overrides Fabric mod loading mechanism'),
         @('-Dfabric\.classPathGroups=',          'FABRIC_CLASSPATH_GROUPS',      'HIGH',   'Manipulates Fabric classpath groups'),
@@ -693,7 +916,6 @@ function Test-JvmArguments {
         @('-Dfabric\.allowUnsupportedVersion=',  'FABRIC_UNSUPPORTED_VERSION',   'MEDIUM', 'Allows unsupported Minecraft versions'),
         @('-Dfabric\.dli\.config=',              'FABRIC_DLI_CONFIG',            'MEDIUM', 'Changes data loader injector config'),
         @('-Dfabric\.development=',              'FABRIC_DEV_MODE',              'LOW',    'Enables Fabric development mode'),
-        # Forge mod injection
         @('-Dforge\.addMods=',                   'FORGE_ADD_MODS',               'HIGH',   'Injects extra Forge mod JARs at runtime'),
         @('-Dforge\.mods=',                      'FORGE_MODS',                   'HIGH',   'Overrides Forge mod list'),
         @('-Dfml\.coreMods\.load=',              'FORGE_COREMODS',               'HIGH',   'Loads Forge core mods via JVM flag'),
@@ -706,20 +928,16 @@ function Test-JvmArguments {
         @('-Dforge\.mixin\.hotSwap=',            'FORGE_MIXIN_HOTSWAP',          'HIGH',   'Enables Forge Mixin hot-swapping'),
         @('-Dforge\.forceVersion=',              'FORGE_FORCE_VERSION',          'HIGH',   'Forces Forge version'),
         @('-Dforge\.disableUpdateCheck=',        'FORGE_DISABLE_UPDATE',         'MEDIUM', 'Disables Forge update checks'),
-        # Security bypasses
         @('-Djava\.security\.manager=',          'SECURITY_MANAGER_DISABLED',    'HIGH',   'Disables Java Security Manager'),
         @('-Djava\.security\.policy=',           'SECURITY_POLICY_OVERRIDE',     'HIGH',   'Overrides security policy (permissions bypass)'),
-        # Classpath manipulation
         @('-Xbootclasspath',                     'BOOTCLASSPATH_MODIFY',         'HIGH',   'Modifies boot classpath (critical system classes)'),
         @('-Djava\.system\.class\.loader=',      'CUSTOM_CLASSLOADER',           'HIGH',   'Replaces system classloader'),
         @('-Djava\.class\.path=',                'CLASSPATH_OVERRIDE',           'HIGH',   'Overrides Java classpath'),
         @('-cp\s+[^ ].*\.jar',                   'CLASSPATH_JAR_INJECTION',      'HIGH',   'Injects JAR via -cp classpath flag'),
-        # Remote debug / agent
         @('-Xrunjdwp:',                          'REMOTE_DEBUG',                 'HIGH',   'Remote debugging enabled (possible RCE)'),
         @('agentlib:jdwp',                       'JDWP_AGENT',                   'HIGH',   'JDWP agent attached — debugger can execute arbitrary code'),
         @('-agentlib:',                          'NATIVE_AGENT',                 'HIGH',   'Loads native JVMTI agent'),
         @('-agentpath:',                         'NATIVE_AGENT_PATH',            'HIGH',   'Loads native agent by path'),
-        # Cheat client brand spoofing
         @('-D(client|launcher)\.brand=(Wurst|Aristois|Impact|Future|Lambda|Rusher|Konas|Phobos|Salhack|Meteor|Async|Wolfram|Huzuni|Rise|Flux|Gamesense|Intent|Remix|Vape|Ghost|Inertia|Sigma|Novoline|Ares|Prestige|Entropy)',
           'CHEAT_CLIENT_BRAND', 'HIGH', 'Cheat client brand spoofed in JVM arguments')
     )
@@ -733,7 +951,6 @@ function Test-JvmArguments {
             $cmd = $wmi.CommandLine
             if (-not $cmd -or -not ($cmd -match "net\.minecraft|Minecraft")) { continue }
 
-            # javaagent check
             $agentMatches = [regex]::Matches($cmd, '-javaagent:([^\s"]+)')
             foreach ($m in $agentMatches) {
                 $agPath = $m.Groups[1].Value.Trim('"').Trim("'")
@@ -748,7 +965,6 @@ function Test-JvmArguments {
                 }
             }
 
-            # Pattern checks
             foreach ($sf in $suspiciousArgsList) {
                 if ($cmd -match $sf[0]) {
                     $key = "$($sf[1])|$javaPid"
@@ -758,7 +974,6 @@ function Test-JvmArguments {
                 }
             }
 
-            # URL-encoded shell metacharacters
             if ($cmd -match '(%3B|%26%26|%7C%7C|%7C|%60|%24|%3C|%3E)') {
                 $key = "URL_ENCODE|$javaPid"
                 if ($foundFlags.Add($key)) {
@@ -766,7 +981,6 @@ function Test-JvmArguments {
                 }
             }
 
-            # Localhost listener (vanilla MC never opens listen sockets)
             try {
                 $netConn = Get-NetTCPConnection -OwningProcess $javaPid -EA Stop |
                     Where-Object { $_.LocalAddress -eq '127.0.0.1' -and $_.State -eq 'Listen' }
@@ -784,9 +998,9 @@ function Test-JvmArguments {
     return $findings
 }
 
-# ═══════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════
 #  REPORT HELPERS
-# ═══════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════
 $W = 72
 function Write-Border { param([string]$Type, [System.ConsoleColor]$Color)
     switch ($Type) {
@@ -823,9 +1037,9 @@ function Write-RowFull { param([string]$Text,
     Write-Host (" " * $p + "║") -ForegroundColor $BC
 }
 
-# ═══════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════
 #  MAIN SCAN
-# ═══════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════
 try { $jars = Get-ChildItem -Path $modsPath -Filter *.jar -EA Stop } catch {
     Write-Host "  Cannot read directory." -ForegroundColor Red
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown"); exit 1
@@ -883,8 +1097,11 @@ foreach ($jar in $jars) {
     $i++; $pct  = [math]::Floor(($i / $total) * 100)
     $padN = $jar.Name.PadRight(40).Substring(0, [math]::Min(40, $jar.Name.Length))
     [Console]::Write("  │  $pct% $padN`r")
+    $baseName      = Get-ModBaseName -FileName $jar.Name
+    $isWhitelisted = $script:cleanModWhitelist.Contains($baseName)
     $sig     = Get-ModSignature -Path $jar.FullName -ScanStrings $true -ScanDeep $true
-    $fnMatch = $tokenRegex.Match($jar.Name.ToLower())
+    # Filename token: skip if whitelisted
+    $fnMatch = if (-not $isWhitelisted) { $tokenRegex.Match($jar.Name.ToLower()) } else { [System.Text.RegularExpressions.Match]::Empty }
     if ($sig.Count -gt 0 -or $fnMatch.Success) {
         $pats   = @($sig | Where-Object { $_ -match '^P\|' } | ForEach-Object { $_.Substring(2) })
         $strs   = @($sig | Where-Object { $_ -match '^S\|' } | ForEach-Object { $_.Substring(2) })
@@ -904,14 +1121,18 @@ foreach ($jar in $jars) {
             HitCount      = $sig.Count
             Sources       = $sources
             ObfResult     = $null
+            MixinHits     = $null
+            BytecodeHits  = $null
+            NetworkHits   = $null
             FilenameToken = if ($fnMatch.Success) { $fnMatch.Value } else { $null }
+            IsWhitelisted = $isWhitelisted
         })
     } else { $clean.Add($jar.Name) }
 }
 Write-Host "  │  100% done                                      " -ForegroundColor DarkMagenta
 Write-Host "  └─ $($flagged.Count) flagged  /  $($clean.Count) clean" -ForegroundColor DarkMagenta
 
-# ── Phase 2: Advanced Obfuscation Detection
+# ── Phase 3: Advanced Obfuscation Detection
 Write-Host ""
 Write-Host "  ┌─ " -ForegroundColor DarkMagenta -NoNewline
 Write-Host "Phase 3" -ForegroundColor Magenta -NoNewline
@@ -926,10 +1147,13 @@ foreach ($jar in $jars) {
     $existing = $flagged | Where-Object { $_.Name -eq $jar.Name } | Select-Object -First 1
     if ($existing)          { $existing.ObfResult = $oFlags }
     elseif ($oFlags.Count -gt 0) {
+        $baseName = Get-ModBaseName -FileName $jar.Name
         $flagged.Add([PSCustomObject]@{
             Name = $jar.Name; Path = $jar.FullName; Size = [math]::Round($jar.Length / 1KB, 1)
             Patterns = @(); Strings = @(); Fullwidth = @(); DeepHits = @(); Entropy = @()
-            HitCount = 0; Sources = @(); ObfResult = $oFlags; FilenameToken = $null
+            HitCount = 0; Sources = @(); ObfResult = $oFlags
+            MixinHits = $null; BytecodeHits = $null; NetworkHits = $null
+            FilenameToken = $null; IsWhitelisted = $script:cleanModWhitelist.Contains($baseName)
         })
         $clean.Remove($jar.Name) | Out-Null
     }
@@ -938,10 +1162,51 @@ Write-Host "  │  100% done                                      " -ForegroundC
 $obfHeavy = ($flagged | Where-Object { $_.ObfResult -and $_.ObfResult.Count -gt 0 }).Count
 Write-Host "  └─ $obfHeavy jar(s) with obfuscation flags" -ForegroundColor DarkMagenta
 
-# ── Phase 3: Disallowed Mods
+# ── Phase 4: Mixin Injection + Bytecode Hook + Network Exfil Scan (NEW)
 Write-Host ""
 Write-Host "  ┌─ " -ForegroundColor DarkMagenta -NoNewline
 Write-Host "Phase 4" -ForegroundColor Magenta -NoNewline
+Write-Host " · Mixin Injection + Bytecode Hooks + Network Exfil" -ForegroundColor DarkGray
+Write-Host "  │" -ForegroundColor DarkMagenta
+$pi = 0
+foreach ($jar in $jars) {
+    $pi++; $pct  = [math]::Floor(($pi / $total) * 100)
+    $padN = $jar.Name.PadRight(40).Substring(0, [math]::Min(40, $jar.Name.Length))
+    [Console]::Write("  │  $pct% $padN`r")
+    $baseName      = Get-ModBaseName -FileName $jar.Name
+    $isWhitelisted = $script:cleanModWhitelist.Contains($baseName)
+    $mHits  = Invoke-MixinInjectionScan   -FilePath $jar.FullName -IsWhitelisted $isWhitelisted
+    $bHits  = Invoke-BytecodeHookScan     -FilePath $jar.FullName -IsWhitelisted $isWhitelisted
+    $nHits  = Invoke-NetworkExfilScan     -FilePath $jar.FullName -IsWhitelisted $isWhitelisted
+    $anyNew = ($mHits.Count + $bHits.Count + $nHits.Count) -gt 0
+    $existing = $flagged | Where-Object { $_.Name -eq $jar.Name } | Select-Object -First 1
+    if ($existing) {
+        $existing.MixinHits    = $mHits
+        $existing.BytecodeHits = $bHits
+        $existing.NetworkHits  = $nHits
+    } elseif ($anyNew) {
+        $flagged.Add([PSCustomObject]@{
+            Name = $jar.Name; Path = $jar.FullName; Size = [math]::Round($jar.Length / 1KB, 1)
+            Patterns = @(); Strings = @(); Fullwidth = @(); DeepHits = @(); Entropy = @()
+            HitCount = 0; Sources = @(); ObfResult = $null
+            MixinHits = $mHits; BytecodeHits = $bHits; NetworkHits = $nHits
+            FilenameToken = $null; IsWhitelisted = $isWhitelisted
+        })
+        $clean.Remove($jar.Name) | Out-Null
+    }
+}
+Write-Host "  │  100% done                                      " -ForegroundColor DarkMagenta
+$p4count = ($flagged | Where-Object {
+    ($_.MixinHits   -and $_.MixinHits.Count   -gt 0) -or
+    ($_.BytecodeHits -and $_.BytecodeHits.Count -gt 0) -or
+    ($_.NetworkHits  -and $_.NetworkHits.Count  -gt 0)
+}).Count
+Write-Host "  └─ $p4count jar(s) with mixin/bytecode/network flags" -ForegroundColor DarkMagenta
+
+# ── Phase 5: Disallowed Mods
+Write-Host ""
+Write-Host "  ┌─ " -ForegroundColor DarkMagenta -NoNewline
+Write-Host "Phase 5" -ForegroundColor Magenta -NoNewline
 Write-Host " · Disallowed Mods Detection" -ForegroundColor DarkGray
 Write-Host "  │" -ForegroundColor DarkMagenta
 Write-Host "  │  scanning... " -ForegroundColor DarkGray -NoNewline
@@ -952,31 +1217,46 @@ Write-Host "  └─ done" -ForegroundColor DarkMagenta
 
 Start-Sleep -Milliseconds 300; Clear-Host
 
-# ═══════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════
 #  CLASSIFICATION
-# ═══════════════════════════════════════════════════════
-$criticalThreats  = [System.Collections.Generic.List[PSObject]]::new()
-$suspiciousFiles  = [System.Collections.Generic.List[PSObject]]::new()
+# ═════════════════════════════════════════════════════════
+$criticalThreats = [System.Collections.Generic.List[PSObject]]::new()
+$suspiciousFiles = [System.Collections.Generic.List[PSObject]]::new()
 foreach ($mod in $flagged) {
     $isBlatant = $false
+
+    # High hit count
     if ($mod.HitCount -ge 15) { $isBlatant = $true }
+
+    # Critical string hits
     foreach ($str in $mod.Strings) {
-        if ($str -match "SelfDestruct|AutoCrystal|Dqrkis Client|POT_CHEATS|Donut|cancelPacket|dropPacket|spoofPacket|setTimerSpeed|timerSpeed|fakeVersion|spoofVersion|grimBypass|ncpBypass|aacBypass|bypassAC|selfdestruct|Runtime\.exec|reverseShell|sendWebhook|TokenGrabber|SessionStealer") {
+        if ($str -match "SelfDestruct|AutoCrystal|Dqrkis Client|POT_CHEATS|Donut|cancelPacket|dropPacket|spoofPacket|setTimerSpeed|timerSpeed|fakeVersion|spoofVersion|grimBypass|ncpBypass|aacBypass|bypassAC|selfdestruct|reverseShell|sendWebhook|TokenGrabber|SessionStealer|discord\.com/api/webhooks|pastebin\.com/raw|grabify|Runtime\.exec\(") {
             $isBlatant = $true; break
         }
     }
+
+    # Strong filename token match
     if ($mod.FilenameToken -and $mod.HitCount -eq 0) {
-        foreach ($t in @("vape","meteor","liquidbounce","wurst","sigma","rise","future","rusherhack","impact","aristois","baritone","dqrkis","doomsday")) {
+        foreach ($t in @("vape","meteor","liquidbounce","wurst","sigma","rise","future","rusherhack","impact","aristois","dqrkis","doomsday","killaura","autocrystal","crystalaura","aimbot")) {
             if ($mod.FilenameToken -match $t) { $isBlatant = $true; break }
         }
     }
+
+    # Dangerous obfuscation combos
     if ($mod.ObfResult -and ($mod.ObfResult | Where-Object { $_ -match "Runtime\.exec|HTTP POST|Fake mod identity" }).Count -gt 0) { $isBlatant = $true }
+
+    # Network exfiltration = always critical
+    if ($mod.NetworkHits -and ($mod.NetworkHits | Where-Object { $_ -match "discord\.com/api/webhooks|discordapp\.com/api/webhooks|pastebin\.com/raw|grabify|TokenGrabber|SessionStealer|ReverseShell|sendWebhook" }).Count -gt 0) { $isBlatant = $true }
+
+    # Mixin injection targeting combat/movement core classes = critical
+    if ($mod.MixinHits -and ($mod.MixinHits | Where-Object { $_ -match "EndCrystalEntityMixin|ExplosionMixinAccessor|PlayerMoveC2SPacketMixin|ClientConnectionMixin|Excessive mixin count" }).Count -gt 0) { $isBlatant = $true }
+
     if ($isBlatant) { $criticalThreats.Add($mod) } else { $suspiciousFiles.Add($mod) }
 }
 
-# ═══════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════
 #  FULL REPORT
-# ═══════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════
 Write-Host ""
 Write-Host "   ┌──────────────────────────────────────────────────────────────────────────────────────┐" -ForegroundColor DarkGray
 Write-Host "   │" -ForegroundColor DarkGray -NoNewline
@@ -1035,6 +1315,9 @@ if ($criticalThreats.Count -gt 0) {
         if ($mod.FilenameToken) { Write-Row "        " "Filename token: $($mod.FilenameToken)" DarkGray Red Red }
         $allHits = @($mod.Strings) + @($mod.Patterns) + @($mod.DeepHits) + @($mod.Fullwidth)
         foreach ($h in ($allHits | Select-Object -First 6)) { Write-Row "        " "• $h" DarkGray Red Red }
+        if ($mod.MixinHits   -and $mod.MixinHits.Count   -gt 0) { foreach ($mh in ($mod.MixinHits   | Select-Object -First 3)) { Write-Row "        " "[MIX] $mh"  DarkGray Magenta Red } }
+        if ($mod.BytecodeHits -and $mod.BytecodeHits.Count -gt 0) { foreach ($bh in ($mod.BytecodeHits | Select-Object -First 3)) { Write-Row "        " "[BYT] $bh"  DarkGray Magenta Red } }
+        if ($mod.NetworkHits  -and $mod.NetworkHits.Count  -gt 0) { foreach ($nh in ($mod.NetworkHits  | Select-Object -First 3)) { Write-Row "        " "[NET] $nh"  DarkGray Magenta Red } }
         if ($mod.ObfResult) { foreach ($o in ($mod.ObfResult | Select-Object -First 3)) { Write-Row "        " "[OBF] $o" DarkGray Yellow Red } }
         if ($mod.Sources.Count -gt 0) { foreach ($s in ($mod.Sources | Select-Object -First 2)) { Write-Row "        " "[URL] $s" DarkGray DarkYellow Red } }
     }
@@ -1053,6 +1336,9 @@ if ($suspiciousFiles.Count -gt 0) {
         if ($mod.FilenameToken) { Write-Row "       " "Filename token: $($mod.FilenameToken)" DarkGray Yellow Yellow }
         $allHits = @($mod.Strings) + @($mod.Patterns) + @($mod.DeepHits) + @($mod.Fullwidth)
         foreach ($h in ($allHits | Select-Object -First 4)) { Write-Row "       " "• $h" DarkGray DarkGray Yellow }
+        if ($mod.MixinHits   -and $mod.MixinHits.Count   -gt 0) { foreach ($mh in ($mod.MixinHits   | Select-Object -First 2)) { Write-Row "       " "[MIX] $mh" DarkGray DarkYellow Yellow } }
+        if ($mod.BytecodeHits -and $mod.BytecodeHits.Count -gt 0) { foreach ($bh in ($mod.BytecodeHits | Select-Object -First 2)) { Write-Row "       " "[BYT] $bh" DarkGray DarkYellow Yellow } }
+        if ($mod.NetworkHits  -and $mod.NetworkHits.Count  -gt 0) { foreach ($nh in ($mod.NetworkHits  | Select-Object -First 2)) { Write-Row "       " "[NET] $nh" DarkGray DarkYellow Yellow } }
         if ($mod.ObfResult) { foreach ($o in ($mod.ObfResult | Select-Object -First 2)) { Write-Row "       " "[OBF] $o" DarkGray DarkYellow Yellow } }
         if ($mod.Entropy.Count -gt 0) { Write-Row "       " "[ENT] High entropy classes detected" DarkGray DarkYellow Yellow }
     }
@@ -1078,7 +1364,7 @@ $totalIssues = $jvmResults.Count + $flagged.Count + $disallowedFound.Count
 if ($totalIssues -eq 0) {
     Write-Host ""
     Write-Border 'top' Cyan
-    Write-RowFull "  ✅  ALL CLEAR — No issues detected across all 4 phases" Cyan Cyan
+    Write-RowFull "  ✅  ALL CLEAR — No issues detected across all 5 phases" Cyan Cyan
     Write-Border 'bot' Cyan
 }
 
