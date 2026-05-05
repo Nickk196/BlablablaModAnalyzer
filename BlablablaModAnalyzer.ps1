@@ -1292,33 +1292,19 @@ if ($totalIssues -eq 0) {
 
 # ── Naughty banner (shown when confirmed cheats are found)
 if ($criticalThreats.Count -gt 0) {
-    # Inner width must match $W (72) so borders line up with the rest of the report
-    $BW = $W  # 72 chars between ║ and ║
-    function Write-NaughtyRow { param([string]$Text, [System.ConsoleColor]$TC = [System.ConsoleColor]::White)
-        $pad = $BW - $Text.Length
-        if ($pad -lt 0) { $Text = $Text.Substring(0, $BW); $pad = 0 }
-        Write-Host "  ║" -ForegroundColor Red -NoNewline
-        Write-Host $Text -ForegroundColor $TC -NoNewline
-        Write-Host (" " * $pad + "║") -ForegroundColor Red
-    }
     $cheatWord = if ($criticalThreats.Count -eq 1) { "cheat" } else { "cheats" }
     Write-Host ""
-    Write-Host ("  ╔" + ("═" * $BW) + "╗") -ForegroundColor Red
-    Write-NaughtyRow ""
-    Write-NaughtyRow "    Yo bro, I think ur cheating!" Magenta
-    Write-NaughtyRow "    You really thought no one would notice? Adorable. 💀" White
-    Write-NaughtyRow ""
-    Write-Host ("  ╚" + ("═" * $BW) + "╝") -ForegroundColor Red
+    Write-Host "    Yo bro, I think ur cheating!" -ForegroundColor Magenta
+    Write-Host "    You really thought no one would notice? Adorable. 💀" -ForegroundColor White
+    Write-Host ""
 }
 
 # ── Footer
 Write-Host ""
-Write-Host "  ╔══════════════════════════════════════════════════════════════════════════════════╗" -ForegroundColor DarkGray
-Write-Host "  ║" -ForegroundColor DarkGray -NoNewline; Write-Host "                    Analysis Complete!                     " -ForegroundColor Green -NoNewline;   Write-Host "║" -ForegroundColor DarkGray
-Write-Host "  ║" -ForegroundColor DarkGray -NoNewline; Write-Host "      Special thanks to Tonynoh for helping me             " -ForegroundColor Magenta -NoNewline; Write-Host "║" -ForegroundColor DarkGray
-Write-Host "  ║" -ForegroundColor DarkGray -NoNewline; Write-Host "      Credits to MeowModAnalyzer                           " -ForegroundColor Cyan -NoNewline;    Write-Host "║" -ForegroundColor DarkGray
-Write-Host "  ║" -ForegroundColor DarkGray -NoNewline; Write-Host "      Discord : mecz.exe                                   " -ForegroundColor Yellow -NoNewline;  Write-Host  "║" -ForegroundColor DarkGray
-Write-Host "  ╚══════════════════════════════════════════════════════════════════════════════════╝" -ForegroundColor DarkGray
+Write-Host "      Analysis Complete!" -ForegroundColor Green
+Write-Host "      Special thanks to Tonynoh for helping me" -ForegroundColor Magenta
+Write-Host "      Credits to MeowModAnalyzer" -ForegroundColor Cyan
+Write-Host "      Discord : mecz.exe" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  Press any key to exit..." -ForegroundColor Gray
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
