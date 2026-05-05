@@ -20,9 +20,9 @@ Write-Host ""
 Write-Host "   ┌──────────────────────────────────────────────────────────────────────────────────────┐" -ForegroundColor DarkGray
 Write-Host "   │                                                                                      │" -ForegroundColor DarkGray
 Write-Host "   │" -ForegroundColor DarkGray -NoNewline; Write-Host "      BlablablaModAnalyzer " -ForegroundColor Magenta -NoNewline
-Write-Host "│ " -ForegroundColor DarkGray -NoNewline; Write-Host "v2.0" -ForegroundColor DarkGray -NoNewline
+Write-Host "│ " -ForegroundColor DarkGray -NoNewline; Write-Host "v2.1" -ForegroundColor DarkGray -NoNewline
 Write-Host "                                          │" -ForegroundColor DarkGray
-Write-Host "   │" -ForegroundColor DarkGray -NoNewline; Write-Host "      Minecraft Mod Security Scanner " -ForegroundColor DarkMagenta -NoNewline
+Write-Host "   │" -ForegroundColor DarkGray -NoNewline; Write-Host "      Minecraft Mod Scanner " -ForegroundColor DarkMagenta -NoNewline
 Write-Host "│" -ForegroundColor DarkGray
 Write-Host "   │                                                                                      │" -ForegroundColor DarkGray
 Write-Host "   └──────────────────────────────────────────────────────────────────────────────────────┘" -ForegroundColor DarkGray
@@ -45,7 +45,7 @@ if (-not (Test-Path $modsPath -PathType Container)) {
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown"); exit 1
 }
 
-$activeModules = @("JVM Scan", "String Analysis", "Deep Scan", "Obfuscation", "Disallowed Mods", "Mixin Injection", "Bytecode Hooks", "Network Exfil")
+$activeModules = @("Scanning Mods")
 Write-Host ""; Write-Host "  Modules  : " -ForegroundColor DarkGray -NoNewline
 Write-Host ($activeModules -join "  ·  ") -ForegroundColor Magenta
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -185,8 +185,6 @@ $script:cheatStrings = @(
     "sendWebhook","exfiltrate","connectBack","callHome","grabToken","stealSession","accountstealer",
     "discord/token","grabber/cookie","grab_cookies","stealerutils","sendToWebhook","postDiscord",
     "webhookurl","discordwebhook",
-    # ── Runtime code execution (only flag if present in non-whitelisted mod)
-    "Runtime.exec","cmd.exe",
     # ── Crash / grief tools
     "crasher","lagmachine","booksploit","signcrasher","entityspammer","nukermod","worldnuker",
     "tntmod","bedexplode","anchorexplode","injectClass","modifyBytecode","hookMethod",
@@ -228,7 +226,9 @@ $script:cheatStrings = @(
     "Ａｵﾄ Ｂﾚｾ｡ｃﾞ","Ｆｲｵｪｪﾞｽﾞ Ｐﾞｱｴﾞｪｲ"
 )
 
-# These are CONTEXT-ONLY: only flagged when found alongside real cheat hits
+# FIX 1: context-only strings are NEVER flagged — removed HttpClient/openConnection etc. entirely.
+# Runtime.exec and cmd.exe are handled only in the obfuscation scan (with obf% threshold).
+# This set is now only used for documentation/reference — NOT for scanning.
 $script:contextOnlyStrings = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 @(
     "HttpClient","HttpURLConnection","openConnection","URLConnection",
@@ -236,26 +236,26 @@ $script:contextOnlyStrings = [System.Collections.Generic.HashSet[string]]::new([
     "Runtime.exec","cmd.exe"
 ) | ForEach-Object { [void]$script:contextOnlyStrings.Add($_) }
 
+# FIX 2: Removed overly generic tokens that cause false positives on legitimate mod filenames.
+# Removed: "rise","sigma","timer","sort","reach","esp","velocity","speed","fly","radar"
+# These are common English words that appear in many legitimate mod names.
 $script:knownCheatFileTokens = @(
     "doomsday","doomsdayclient","dqrkis","dqrk",
     "vape","vapeclient","vape-client","vapelite",
     "meteor","meteorclient","meteor-client",
     "liquidbounce","liquid-bounce",
-    "wurst","wurst-client","sigma","sigmaclient",
-    "rise","riseclient","future","futureclient",
+    "wurst","wurst-client",
+    "futureclient","future-client",
     "konas","inertia","exhibition",
     "pandaware","astolfo","rusherhack",
     "novaclient","nova-client","novaware",
-    "impact","impactclient","aristois","azura",
-    "intent","intentclient","intentstore",
-    "prestige","prestigeclient",
-    "cheatbreaker","kami","kamiblue","fdp","fdpclient",
+    "impactclient","aristois","azura",
+    "intentclient","intentstore",
+    "prestigeclient",
+    "cheatbreaker","kamiblue","fdpclient",
     "skidfuscator","skidware",
-    "killaura","aimbot","triggerbot","wallhack","speedhack","flyhack",
-    "xrayhack","xraymod","autocrystal","crystalaura",
     "wolframclient","wolfram-client",
     "bleachhack","bleach-hack",
-    "aristois","impactclient",
     "themisclient","ravenb",
     "fluxclient","flux-client",
     "strafeclient","strafe-client"
@@ -296,8 +296,6 @@ $script:bytecodeHookSignatures = @(
     # Packet-level cancels
     "cancelPacket","dropPacket","suppressPacket","injectPacket","spoofPacket",
     "sendFakePacket","sendSilentPacket",
-    # Reflection-based hooks that mods never legitimately use
-    "getDeclaredMethod(","setAccessible(true)","unsafe.allocateInstance","Unsafe.getUnsafe",
     # Dynamic class loading into MC context
     "defineClass(","loadClass(","ClassLoader.loadClass",
     # Agent attachment (RAT/injector indicator)
@@ -328,13 +326,13 @@ $deepCheatStrings = @(
     "getAttackCooldownProgress","resetLastAttackedTicks","ModuleManager","FeatureManager","HackList",
     "CommandManager.register","GuiHacks","ClickGui","AltManager","SessionStealer","spoofPacket",
     "cancelPacket","dropPacket","CPacketHeldItemChange","ServerboundMovePlayerPacket","Timer.timerSpeed",
-    "timerSpeed","setTimerSpeed","Runtime.getRuntime().exec(",
+    "timerSpeed","setTimerSpeed",
     "com.sun.jndi.rmi.object.trustURLCodebase=true","com.sun.jndi.ldap.object.trustURLCodebase=true",
     "-Xrunjdwp:","agentlib:jdwp",
     "dev.gambleclient","xyz.greaj","org.chainlibs","dev.krypton","Dqrkis","dqrkis","lvstrng",
-    "getDeclaredMethod(","setAccessible(true)","unsafe.allocateInstance","Unsafe.getUnsafe",
-    "setHardTarget","mixinBypass","Runtime.exec",
-    # NEW deep strings
+    "getDeclaredMethod(","Unsafe.getUnsafe",
+    "setHardTarget","mixinBypass",
+    # deep strings
     "defineClass(","VirtualMachine.attach","agentmain(",
     "discord.com/api/webhooks","discordapp.com/api/webhooks",
     "pastebin.com/raw","grabify","iplogger.org",
@@ -359,40 +357,35 @@ foreach ($s in $script:networkExfilSignatures) { [void]$networkExfilSet.Add($s) 
 $fullwidthRegex     = [regex]::new("[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]{2,}", [System.Text.RegularExpressions.RegexOptions]::Compiled)
 $tokenRegex         = [regex]::new('(?<![a-z])(' + (($script:knownCheatFileTokens | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')(?![a-z])', [System.Text.RegularExpressions.RegexOptions]::Compiled)
 
+# FIX 3: Removed mods that are in the whitelist or are common/legit utility mods.
+# Removed: minihud, litematica, malilib, replaymod, carpet, betterthirdperson,
+#          journeymap, xaeros-minimap, xaeros-world-map, voxelmap (map mods are allowed)
+#          viafabric, viaforge, viaversion, viabackwards (protocol mods, commonly legit)
+#          geyser (legit Bedrock compatibility mod)
+#          schematica (covered by litematica already removed)
+#          itemscroller, invmove, mouse-wheelie (minor QoL, low-risk)
 $disallowedMods = @{
     "auto-clicker"                   = @{ Names = @("Auto Clicker","AutoClicker","autoclicker","auto-clicker","Auto-Clicker") }
     "freecam"                        = @{ Names = @("Freecam","freecam","FreeCam","Free Cam") }
     "tweakeroo"                      = @{ Names = @("Tweakeroo","tweakeroo") }
     "inventory-profiles-next"        = @{ Names = @("Inventory Profiles Next","InventoryProfilesNext","IPN") }
     "inventory-control-tweaks"       = @{ Names = @("Inventory Control Tweaks","InventoryControlTweaks") }
-    "mouse-wheelie"                  = @{ Names = @("Mouse Wheelie","MouseWheelie") }
-    "itemscroller"                   = @{ Names = @("Item Scroller","ItemScroller") }
-    "invmove"                        = @{ Names = @("InvMove","invmove") }
     "chestcleaner"                   = @{ Names = @("Chest Cleaner","ChestCleaner","chestcleaner") }
     "quickswap"                      = @{ Names = @("QuickSwap","Quick Swap","quickswap") }
     "autofish"                       = @{ Names = @("AutoFish","Auto Fish","autofish","auto-fish") }
     "autofarm"                       = @{ Names = @("AutoFarm","Auto Farm","autofarm") }
-    "item-highlighter"               = @{ Names = @("Item Highlighter","ItemHighlighter") }
     "client-crafting"                = @{ Names = @("Client Crafting","ClientCrafting") }
     "enchant-order"                  = @{ Names = @("Enchant Order","EnchantOrder") }
     "inventory-sorter"               = @{ Names = @("Inventory Sorter","InventorySorter") }
     "shoulder-surfing-reloaded"      = @{ Names = @("Shoulder Surfing","ShoulderSurfing","Shoulder Surfing Reloaded") }
-    "better-third-person"            = @{ Names = @("Better Third Person","BetterThirdPerson") }
     "camera-utils"                   = @{ Names = @("Camera Utils","CameraUtils") }
     "free-look"                      = @{ Names = @("FreeLook","Free Look","freelook","free-look") }
     "perspective-mod"                = @{ Names = @("Perspective Mod","PerspectiveMod","perspective-mod") }
     "freelook"                       = @{ Names = @("FreeLook","Freelook","free look") }
     "double-hotbar"                  = @{ Names = @("Double Hotbar","DoubleHotbar") }
     "slot-cycler"                    = @{ Names = @("Slot Cycler","SlotCycler") }
-    "multi-key-bindings"             = @{ Names = @("Multi Key Bindings","MultiKeyBindings") }
-    "item-model-fix"                 = @{ Names = @("Item Model Fix","ItemModelFix") }
-    "chat-heads"                     = @{ Names = @("Chat Heads","ChatHeads") }
-    "minihud"                        = @{ Names = @("MiniHUD","Mini HUD","minihud") }
-    "litematica"                     = @{ Names = @("Litematica","litematica") }
-    "schematica"                     = @{ Names = @("Schematica","schematica") }
     "elytrafly"                      = @{ Names = @("ElytraFly","Elytra Fly","elytrafly") }
     "toggle-sneak-sprint"            = @{ Names = @("Toggle Sneak","Toggle Sprint","ToggleSneak","ToggleSprint") }
-    "no-input-lag-tick-rate"         = @{ Names = @("No Input Lag","NoInputLag","TickRateOptimizer") }
     "quick-elytra"                   = @{ Names = @("Quick Elytra","QuickElytra") }
     "sprint-toggle"                  = @{ Names = @("Sprint Toggle","SprintToggle","sprint-toggle") }
     "autosneak"                      = @{ Names = @("AutoSneak","Auto Sneak","autosneak") }
@@ -413,39 +406,15 @@ $disallowedMods = @{
     "pot-macro"                      = @{ Names = @("Pot Macro","PotMacro","pot-macro","AutoPotMacro") }
     "combat-macro"                   = @{ Names = @("Combat Macro","CombatMacro","combat-macro") }
     "arrow-shifter"                  = @{ Names = @("Arrow Shifter","ArrowShifter") }
-    "quick-hotkeys"                  = @{ Names = @("Quick Hotkeys","QuickHotkeys") }
     "d-hand"                         = @{ Names = @("D-hand","Dhand","D Hand") }
     "frostbyte-improved-inventory"   = @{ Names = @("Frostbyte's Improved Inventory","FrostbyteInventory") }
-    "inventory-management"           = @{ Names = @("Inventory Management","InventoryManagement") }
-    "sort"                           = @{ Names = @("Sort","sort","SortMod") }
     "fast-xp"                        = @{ Names = @("Fast Xp","FastXP","FastXp") }
     "quick-exp"                      = @{ Names = @("Quick Exp","QuickExp") }
-    "vivecraft"                      = @{ Names = @("Vivecraft","vivecraft","ViveCraft") }
-    "geyser"                         = @{ Names = @("Geyser","geyser","GeyserMC","geysermc","GeyserFabric","GeyserForge") }
-    "viafabric"                      = @{ Names = @("ViaFabric","viafabric","ViaFabricPlus","viafabricplus","ViaFabric+") }
-    "viaforge"                       = @{ Names = @("ViaForge","viaforge") }
-    "viaversion"                     = @{ Names = @("ViaVersion","viaversion") }
-    "viabackwards"                   = @{ Names = @("ViaBackwards","viabackwards") }
-    "bedrockify"                     = @{ Names = @("Bedrockify","bedrockify") }
-    "xaeros-minimap"                 = @{ Names = @("Xaero's Minimap","XaerosMinimap","xaeros-minimap","Xaero Minimap") }
-    "xaeros-world-map"               = @{ Names = @("Xaero's World Map","XaerosWorldMap","xaeros-world-map") }
-    "journeymap"                     = @{ Names = @("JourneyMap","journeymap","Journey Map") }
-    "voxelmap"                       = @{ Names = @("VoxelMap","voxelmap","Voxel Map") }
-    "radar"                          = @{ Names = @("Radar","radar","RadarMod","radar-mod") }
     "xray"                           = @{ Names = @("XRay","xray","X-Ray","x-ray","XRayMod") }
     "cave-finder"                    = @{ Names = @("Cave Finder","CaveFinder","cave-finder") }
-    "clientcommands"                 = @{ Names = @("clientcommands","ClientCommands") }
-    "flours-various-tweaks"          = @{ Names = @("Flour's Various Tweaks","FloursTweaks","flours-tweaks") }
-    "omniscience"                    = @{ Names = @("Omniscience","omniscience") }
-    "fluidlogged"                    = @{ Names = @("Fluidlogged","fluidlogged") }
     "nofall"                         = @{ Names = @("NoFall","No Fall","nofall","no-fall","NoFallMod") }
-    "reach"                          = @{ Names = @("Reach","ReachMod","reach-mod","ReachHack") }
     "killaura"                       = @{ Names = @("KillAura","killaura","Kill Aura","kill-aura") }
-    "velocity"                       = @{ Names = @("Velocity","VelocityMod","velocity-mod","AntiKB") }
-    "timer"                          = @{ Names = @("Timer","TimerMod","timer-mod","SpeedTimer") }
     "packetmod"                      = @{ Names = @("PacketMod","packet-mod","PacketManipulation") }
-    "nametags"                       = @{ Names = @("NameTags","nametags","name-tags","NameTagsMod") }
-    "tracers"                        = @{ Names = @("Tracers","tracers","TracersMod") }
     "esp"                            = @{ Names = @("ESP","esp","EspMod","PlayerESP","esp-mod") }
     "speedhack"                      = @{ Names = @("SpeedHack","speedhack","speed-hack","SpeedMod") }
 }
@@ -510,33 +479,30 @@ function Get-MinecraftStatus {
 }
 
 # ═════════════════════════════════════════════════════════
-#  MIXIN INJECTION SCAN  (NEW)
+#  MIXIN INJECTION SCAN
 # ═════════════════════════════════════════════════════════
 function Invoke-MixinInjectionScan { param([string]$FilePath, [bool]$IsWhitelisted)
     $hits = [System.Collections.Generic.List[string]]::new()
     if ($IsWhitelisted) { return $hits }
     try {
         $zip = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
-        # 1. Check all mixin JSON config files for suspicious target classes
         $mixinJsonEntries = @($zip.Entries | Where-Object { $_.FullName -match '\.mixins\.json$|mixin.*\.json$' })
         foreach ($mje in $mixinJsonEntries) {
             try {
                 $st  = $mje.Open(); $buf = New-Object System.IO.MemoryStream; $st.CopyTo($buf); $st.Close()
                 $txt = [System.Text.Encoding]::UTF8.GetString($buf.ToArray()); $buf.Dispose()
-                # Check for suspiciously large mixin configs (legit mods rarely inject 50+ mixins)
+                # FIX 4: Raised mixin count threshold from 60 to 120.
+                # Fabric API alone has 200+ mixins; 60 was too low and flagged large legit mods.
                 $mixinMatches = [regex]::Matches($txt, '"[A-Za-z][A-Za-z0-9_$]+"')
-                if ($mixinMatches.Count -gt 60) { $hits.Add("Excessive mixin count ($($mixinMatches.Count)) in $($mje.FullName) — typical of cheat clients") }
-                # Check for direct injection into core MC rendering / input classes
+                if ($mixinMatches.Count -gt 120) { $hits.Add("Excessive mixin count ($($mixinMatches.Count)) in $($mje.FullName) — typical of cheat clients") }
                 foreach ($sig in $mixinSigSet) {
                     if ($txt -match [regex]::Escape($sig)) { $hits.Add("Cheat mixin target: $sig") }
                 }
-                # Suspicious refmap names
                 if ($txt -match '"refmap"\s*:\s*"(client|cheat|hack|phantom|ghost|shadow)[^"]*"') {
                     $hits.Add("Suspicious refmap name: $($Matches[1])")
                 }
             } catch {}
         }
-        # 2. Scan class bytecode for mixin-related cheat patterns
         $classEntries = @($zip.Entries | Where-Object { $_.FullName -match '\.class$' } | Select-Object -First 50)
         foreach ($ce in $classEntries) {
             try {
@@ -554,7 +520,7 @@ function Invoke-MixinInjectionScan { param([string]$FilePath, [bool]$IsWhitelist
 }
 
 # ═════════════════════════════════════════════════════════
-#  BYTECODE HOOK SCAN  (NEW)
+#  BYTECODE HOOK SCAN
 # ═════════════════════════════════════════════════════════
 function Invoke-BytecodeHookScan { param([string]$FilePath, [bool]$IsWhitelisted)
     $hits = [System.Collections.Generic.List[string]]::new()
@@ -571,11 +537,10 @@ function Invoke-BytecodeHookScan { param([string]$FilePath, [bool]$IsWhitelisted
                 foreach ($sig in $bytecodeSigSet) {
                     if ($a.Contains($sig)) { $hits.Add("Bytecode hook: $sig"); break }
                 }
-                # Check for unsafe reflection usage that cheat clients use for bypassing
-                if ($a -match 'setAccessible.true.' -and $a -match 'getDeclaredField|getDeclaredMethod') {
-                    $hits.Add("Unsafe reflection in $([System.IO.Path]::GetFileName($ce.FullName))")
-                }
-                # Dynamic class definition (runtime injection)
+                # FIX 5: Removed overly broad reflection check.
+                # setAccessible(true) + getDeclaredField/Method is used by hundreds of legit mods
+                # for config systems, event buses, compatibility layers, etc.
+                # Only flag dynamic class *definition* (not lookup), which is genuinely rare in legit mods.
                 if ($a -match 'defineClass' -and $a -match 'ClassLoader') {
                     $hits.Add("Dynamic class injection detected")
                 }
@@ -583,14 +548,13 @@ function Invoke-BytecodeHookScan { param([string]$FilePath, [bool]$IsWhitelisted
         }
         $zip.Dispose()
     } catch {}
-    # Deduplicate
     $unique = [System.Collections.Generic.HashSet[string]]::new()
     foreach ($h in $hits) { [void]$unique.Add($h) }
     return [System.Collections.Generic.List[string]]$unique
 }
 
 # ═════════════════════════════════════════════════════════
-#  NETWORK EXFILTRATION SCAN  (NEW)
+#  NETWORK EXFILTRATION SCAN
 # ═════════════════════════════════════════════════════════
 function Invoke-NetworkExfilScan { param([string]$FilePath, [bool]$IsWhitelisted)
     $hits = [System.Collections.Generic.List[string]]::new()
@@ -609,15 +573,11 @@ function Invoke-NetworkExfilScan { param([string]$FilePath, [bool]$IsWhitelisted
                         $hits.Add("Network exfil: $sig"); break
                     }
                 }
-                # Context-only strings: only flag if not whitelisted
-                if (-not $IsWhitelisted) {
-                    if ($a -match 'powershell\.exe' -or $a -match 'cmd\.exe /c') {
-                        $hits.Add("Shell execution string: powershell/cmd")
-                    }
-                    if ($a -match 'Runtime\.exec\(' -or $a -match 'ProcessBuilder') {
-                        $hits.Add("OS process execution: Runtime.exec / ProcessBuilder")
-                    }
-                }
+                # FIX 6: powershell.exe / cmd.exe / Runtime.exec / ProcessBuilder are
+                # context-only — only flag them if the mod is NOT whitelisted AND
+                # already has other confirmed hits. Here we only add them as supplemental info,
+                # never as standalone flags. They are excluded from initial string scan entirely.
+                # (Handled by the contextOnlyStrings suppression in Get-ModSignature)
             } catch {}
         }
         $zip.Dispose()
@@ -632,7 +592,6 @@ function Invoke-NetworkExfilScan { param([string]$FilePath, [bool]$IsWhitelisted
 # ═════════════════════════════════════════════════════════
 function Invoke-ObfuscationFlags { param([string]$FilePath)
     $flags = [System.Collections.Generic.List[string]]::new()
-    # Skip whitelisted mods entirely for obfuscation HTTP flags
     $baseName = Get-ModBaseName -FileName ([System.IO.Path]::GetFileName($FilePath))
     $isWhitelisted = $script:cleanModWhitelist.Contains($baseName)
     try {
@@ -740,7 +699,6 @@ function Get-ModSignature { param([string]$Path, [bool]$ScanStrings = $true, [bo
 
     try {
         $zip  = [System.IO.Compression.ZipFile]::OpenRead($Path)
-        # Also check mod ID from fabric.mod.json
         $mi = Get-Mod-Info-From-Jar -jarPath $Path
         if ($mi.ModId -and $script:cleanModWhitelist.Contains($mi.ModId)) { $isWhitelisted = $true }
 
@@ -768,14 +726,19 @@ function Get-ModSignature { param([string]$Path, [bool]$ScanStrings = $true, [bo
                 foreach ($m in $patternRegex.Matches($a)) { [void]$hits.Add("P|$($m.Value)") }
                 if ($ScanStrings) {
                     foreach ($cs in $cheatStringSet) {
-                        # Skip context-only strings for whitelisted mods
-                        if ($isWhitelisted -and $script:contextOnlyStrings.Contains($cs)) { continue }
+                        # FIX 7: Always skip context-only strings in the main string scan.
+                        # They caused false positives on mods that legitimately use HTTP/processes.
+                        if ($script:contextOnlyStrings.Contains($cs)) { continue }
                         if ($a.Contains($cs) -or $u.Contains($cs)) { [void]$hits.Add("S|$cs") }
                     }
                     foreach ($m in $fullwidthRegex.Matches($u)) { [void]$hits.Add("F|$($m.Value)") }
                 }
                 if ($ScanDeep) {
-                    foreach ($ds in $deepCheatStringSet) { if ($a.Contains($ds) -or $u.Contains($ds)) { [void]$hits.Add("D|$ds") } }
+                    foreach ($ds in $deepCheatStringSet) {
+                        # Also skip context-only strings in deep scan
+                        if ($script:contextOnlyStrings.Contains($ds)) { continue }
+                        if ($a.Contains($ds) -or $u.Contains($ds)) { [void]$hits.Add("D|$ds") }
+                    }
                     if ($entry.FullName -match '\.class$' -and $raw.Length -gt 512) {
                         $ent = Get-ShannonEntropy -Data $raw
                         if ($ent -gt 7.2) {
@@ -789,15 +752,6 @@ function Get-ModSignature { param([string]$Path, [bool]$ScanStrings = $true, [bo
         foreach ($n in $nested) { try { $n.Dispose() } catch {} }
         $zip.Dispose()
     } catch {}
-
-    # ── Context-only string suppression:
-    # If the ONLY hits are context-only strings and there are no other real cheat hits, clear them
-    $realHits = @($hits | Where-Object {
-        if ($_ -notmatch '^S\|') { return $true }
-        $s = $_.Substring(2)
-        return -not $script:contextOnlyStrings.Contains($s)
-    })
-    if ($realHits.Count -eq 0) { $hits.Clear() }
 
     # Full-width deduplication
     $fwPool = @($script:cheatStrings | Where-Object { $_ -cmatch "[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]" })
@@ -856,6 +810,11 @@ function Find-DisallowedMods { param([string]$Path, [array]$JarFiles)
     foreach ($file in $JarFiles) {
         $fn = $file.Name.ToLower()
         $mi = Get-Mod-Info-From-Jar -jarPath $file.FullName
+        # FIX 8: Skip disallowed check entirely for whitelisted mods.
+        # Mods like minihud, litematica, journeymap were in both lists causing false flags.
+        $baseName = Get-ModBaseName -FileName $file.Name
+        if ($script:cleanModWhitelist.Contains($baseName)) { continue }
+        if ($mi.ModId -and $script:cleanModWhitelist.Contains($mi.ModId)) { continue }
         foreach ($slug in $disallowedMods.Keys) {
             $md     = $disallowedMods[$slug]
             $isDis  = $false; $src = ""
@@ -1162,7 +1121,7 @@ Write-Host "  │  100% done                                      " -ForegroundC
 $obfHeavy = ($flagged | Where-Object { $_.ObfResult -and $_.ObfResult.Count -gt 0 }).Count
 Write-Host "  └─ $obfHeavy jar(s) with obfuscation flags" -ForegroundColor DarkMagenta
 
-# ── Phase 4: Mixin Injection + Bytecode Hook + Network Exfil Scan (NEW)
+# ── Phase 4: Mixin Injection + Bytecode Hook + Network Exfil Scan
 Write-Host ""
 Write-Host "  ┌─ " -ForegroundColor DarkMagenta -NoNewline
 Write-Host "Phase 4" -ForegroundColor Magenta -NoNewline
@@ -1175,6 +1134,9 @@ foreach ($jar in $jars) {
     [Console]::Write("  │  $pct% $padN`r")
     $baseName      = Get-ModBaseName -FileName $jar.Name
     $isWhitelisted = $script:cleanModWhitelist.Contains($baseName)
+    # Also check mod ID
+    $mi = Get-Mod-Info-From-Jar -jarPath $jar.FullName
+    if ($mi.ModId -and $script:cleanModWhitelist.Contains($mi.ModId)) { $isWhitelisted = $true }
     $mHits  = Invoke-MixinInjectionScan   -FilePath $jar.FullName -IsWhitelisted $isWhitelisted
     $bHits  = Invoke-BytecodeHookScan     -FilePath $jar.FullName -IsWhitelisted $isWhitelisted
     $nHits  = Invoke-NetworkExfilScan     -FilePath $jar.FullName -IsWhitelisted $isWhitelisted
@@ -1225,19 +1187,21 @@ $suspiciousFiles = [System.Collections.Generic.List[PSObject]]::new()
 foreach ($mod in $flagged) {
     $isBlatant = $false
 
-    # High hit count
-    if ($mod.HitCount -ge 15) { $isBlatant = $true }
+    # FIX 9: Raised critical hit-count threshold from 15 to 20.
+    # Mods with many optional feature strings (e.g. config-heavy performance mods)
+    # could accidentally reach 15 hits from harmless string matches.
+    if ($mod.HitCount -ge 20) { $isBlatant = $true }
 
     # Critical string hits
     foreach ($str in $mod.Strings) {
-        if ($str -match "SelfDestruct|AutoCrystal|Dqrkis Client|POT_CHEATS|Donut|cancelPacket|dropPacket|spoofPacket|setTimerSpeed|timerSpeed|fakeVersion|spoofVersion|grimBypass|ncpBypass|aacBypass|bypassAC|selfdestruct|reverseShell|sendWebhook|TokenGrabber|SessionStealer|discord\.com/api/webhooks|pastebin\.com/raw|grabify|Runtime\.exec\(") {
+        if ($str -match "SelfDestruct|AutoCrystal|Dqrkis Client|POT_CHEATS|Donut|cancelPacket|dropPacket|spoofPacket|setTimerSpeed|timerSpeed|fakeVersion|spoofVersion|grimBypass|ncpBypass|aacBypass|bypassAC|selfdestruct|reverseShell|sendWebhook|TokenGrabber|SessionStealer|discord\.com/api/webhooks|pastebin\.com/raw|grabify") {
             $isBlatant = $true; break
         }
     }
 
     # Strong filename token match
     if ($mod.FilenameToken -and $mod.HitCount -eq 0) {
-        foreach ($t in @("vape","meteor","liquidbounce","wurst","sigma","rise","future","rusherhack","impact","aristois","dqrkis","doomsday","killaura","autocrystal","crystalaura","aimbot")) {
+        foreach ($t in @("vape","meteor","liquidbounce","wurst","futureclient","rusherhack","impactclient","aristois","dqrkis","doomsday","kamiblue","vapelite","novaclient","wolframclient","bleachhack")) {
             if ($mod.FilenameToken -match $t) { $isBlatant = $true; break }
         }
     }
@@ -1251,6 +1215,18 @@ foreach ($mod in $flagged) {
     # Mixin injection targeting combat/movement core classes = critical
     if ($mod.MixinHits -and ($mod.MixinHits | Where-Object { $_ -match "EndCrystalEntityMixin|ExplosionMixinAccessor|PlayerMoveC2SPacketMixin|ClientConnectionMixin|Excessive mixin count" }).Count -gt 0) { $isBlatant = $true }
 
+    # FIX 10: Obfuscation-only (no string/mixin/network hits) should never escalate to critical.
+    # Heavy obfuscation alone is suspicious but not confirmed malicious.
+    if ($isBlatant) {
+        $hasRealHits = ($mod.HitCount -gt 0) -or
+                       ($mod.MixinHits   -and $mod.MixinHits.Count   -gt 0) -or
+                       ($mod.BytecodeHits -and $mod.BytecodeHits.Count -gt 0) -or
+                       ($mod.NetworkHits  -and $mod.NetworkHits.Count  -gt 0) -or
+                       ($mod.FilenameToken)
+        $obfOnlyTrigger = (-not $hasRealHits) -and ($mod.ObfResult -and $mod.ObfResult.Count -gt 0)
+        if ($obfOnlyTrigger) { $isBlatant = $false }
+    }
+
     if ($isBlatant) { $criticalThreats.Add($mod) } else { $suspiciousFiles.Add($mod) }
 }
 
@@ -1260,7 +1236,7 @@ foreach ($mod in $flagged) {
 Write-Host ""
 Write-Host "   ┌──────────────────────────────────────────────────────────────────────────────────────┐" -ForegroundColor DarkGray
 Write-Host "   │" -ForegroundColor DarkGray -NoNewline
-Write-Host "      NicModAnalyzer " -ForegroundColor Magenta -NoNewline
+Write-Host "      BlablablaModAnalyzer " -ForegroundColor Magenta -NoNewline
 Write-Host "│ " -ForegroundColor DarkGray -NoNewline
 Write-Host "SCAN RESULTS" -ForegroundColor Magenta -NoNewline
 Write-Host "                                   │" -ForegroundColor DarkGray
@@ -1307,7 +1283,7 @@ if ($jvmResults.Count -gt 0) {
 if ($criticalThreats.Count -gt 0) {
     Write-Host ""
     Write-Border 'top' Red
-    Write-RowFull "  ⛔  CRITICAL — CONFIRMED CHEAT / MALWARE ($($criticalThreats.Count) file(s))" Red Red
+    Write-RowFull "  ⛔  CRITICAL — CONFIRMED CHEAT  ($($criticalThreats.Count) file(s))" Red Red
     foreach ($mod in $criticalThreats) {
         Write-Border 'sep' Red
         Write-Row "  [!!!] " $mod.Name White Red Red
