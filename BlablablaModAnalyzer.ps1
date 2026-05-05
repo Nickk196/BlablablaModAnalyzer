@@ -1301,10 +1301,10 @@ if ($criticalThreats.Count -gt 0) {
     Write-Host "    ( ͡° ͜ʖ ͡°)   Naughty boy... why are you cheating?                           " -ForegroundColor Yellow -NoNewline
     Write-Host "║" -ForegroundColor Red
     Write-Host "  ║" -ForegroundColor Red -NoNewline
-    Write-Host "    You got $($criticalThreats.Count) confirmed cheat(s) in your mods folder!       " -ForegroundColor White -NoNewline
+    Write-Host "          " -ForegroundColor White -NoNewline
     Write-Host "                  ║" -ForegroundColor Red
     Write-Host "  ║" -ForegroundColor Red -NoNewline
-    Write-Host "    Bad boy. Very bad boy. Go touch grass. 🌿                                    " -ForegroundColor Cyan -NoNewline
+    Write-Host "                                        " -ForegroundColor Cyan -NoNewline
     Write-Host "║" -ForegroundColor Red
     Write-Host "  ║" -ForegroundColor Red -NoNewline
     Write-Host "                                                                                  " -ForegroundColor Red -NoNewline
