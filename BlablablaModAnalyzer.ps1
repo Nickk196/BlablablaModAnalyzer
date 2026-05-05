@@ -1316,8 +1316,8 @@ if ($criticalThreats.Count -gt 0) {
 Write-Host ""
 Write-Host "  ╔══════════════════════════════════════════════════════════════════════════════════╗" -ForegroundColor DarkGray
 Write-Host "  ║" -ForegroundColor DarkGray -NoNewline; Write-Host "                    Analysis Complete!                     " -ForegroundColor Green -NoNewline;   Write-Host "║" -ForegroundColor DarkGray
-Write-Host "  ║" -ForegroundColor DarkGray -NoNewline; Write-Host "      Special thanks to Tonynoh for helping me            " -ForegroundColor Magenta -NoNewline; Write-Host "║" -ForegroundColor DarkGray
-Write-Host "  ║" -ForegroundColor DarkGray -NoNewline; Write-Host "      Credits to MeowModAnalyzer                          " -ForegroundColor Cyan -NoNewline;    Write-Host "║" -ForegroundColor DarkGray
+Write-Host "  ║" -ForegroundColor DarkGray -NoNewline; Write-Host "      Special thanks to Tonynoh for helping me             " -ForegroundColor Magenta -NoNewline; Write-Host "║" -ForegroundColor DarkGray
+Write-Host "  ║" -ForegroundColor DarkGray -NoNewline; Write-Host "      Credits to MeowModAnalyzer                           " -ForegroundColor Cyan -NoNewline;    Write-Host "║" -ForegroundColor DarkGray
 Write-Host "  ║" -ForegroundColor DarkGray -NoNewline; Write-Host "      Discord : mecz.exe                                   " -ForegroundColor Yellow -NoNewline; Write-Host "║" -ForegroundColor DarkGray
 Write-Host "  ╚══════════════════════════════════════════════════════════════════════════════════╝" -ForegroundColor DarkGray
 Write-Host ""
