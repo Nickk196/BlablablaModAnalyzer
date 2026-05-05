@@ -1305,8 +1305,7 @@ if ($criticalThreats.Count -gt 0) {
     Write-Host ""
     Write-Host ("  ╔" + ("═" * $BW) + "╗") -ForegroundColor Red
     Write-NaughtyRow ""
-    Write-NaughtyRow "    o(>_<)o  Caught red-handed!" Magenta
-    Write-NaughtyRow "    $($criticalThreats.Count) confirmed $cheatWord found — naughty boy, naughty boy..." Yellow
+    Write-NaughtyRow "    Yo bro, I think ur cheating!" Magenta
     Write-NaughtyRow "    You really thought no one would notice? Adorable. 💀" White
     Write-NaughtyRow ""
     Write-Host ("  ╚" + ("═" * $BW) + "╝") -ForegroundColor Red
@@ -1318,7 +1317,7 @@ Write-Host "  ╔═════════════════════
 Write-Host "  ║" -ForegroundColor DarkGray -NoNewline; Write-Host "                    Analysis Complete!                     " -ForegroundColor Green -NoNewline;   Write-Host "║" -ForegroundColor DarkGray
 Write-Host "  ║" -ForegroundColor DarkGray -NoNewline; Write-Host "      Special thanks to Tonynoh for helping me             " -ForegroundColor Magenta -NoNewline; Write-Host "║" -ForegroundColor DarkGray
 Write-Host "  ║" -ForegroundColor DarkGray -NoNewline; Write-Host "      Credits to MeowModAnalyzer                           " -ForegroundColor Cyan -NoNewline;    Write-Host "║" -ForegroundColor DarkGray
-Write-Host "  ║" -ForegroundColor DarkGray -NoNewline; Write-Host "      Discord : mecz.exe                                   " -ForegroundColor Yellow -NoNewline; Write-Host "║" -ForegroundColor DarkGray
+Write-Host "  ║" -ForegroundColor DarkGray -NoNewline; Write-Host "      Discord : mecz.exe                                   " -ForegroundColor Yellow -NoNewline;  Write-Host  "║" -ForegroundColor DarkGray
 Write-Host "  ╚══════════════════════════════════════════════════════════════════════════════════╝" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "  Press any key to exit..." -ForegroundColor Gray
