@@ -1292,24 +1292,24 @@ if ($totalIssues -eq 0) {
 
 # ── Naughty banner (shown when confirmed cheats are found)
 if ($criticalThreats.Count -gt 0) {
+    # Inner width must match $W (72) so borders line up with the rest of the report
+    $BW = $W  # 72 chars between ║ and ║
+    function Write-NaughtyRow { param([string]$Text, [System.ConsoleColor]$TC = [System.ConsoleColor]::White)
+        $pad = $BW - $Text.Length
+        if ($pad -lt 0) { $Text = $Text.Substring(0, $BW); $pad = 0 }
+        Write-Host "  ║" -ForegroundColor Red -NoNewline
+        Write-Host $Text -ForegroundColor $TC -NoNewline
+        Write-Host (" " * $pad + "║") -ForegroundColor Red
+    }
+    $cheatWord = if ($criticalThreats.Count -eq 1) { "cheat" } else { "cheats" }
     Write-Host ""
-    Write-Host "  ╔══════════════════════════════════════════════════════════════════════════════════╗" -ForegroundColor Red
-    Write-Host "  ║" -ForegroundColor Red -NoNewline
-    Write-Host "                                                                                  " -ForegroundColor Red -NoNewline
-    Write-Host "║" -ForegroundColor Red
-    Write-Host "  ║" -ForegroundColor Red -NoNewline
-    Write-Host "    ( ͡° ͜ʖ ͡°)   Naughty boy... why are you cheating?                           " -ForegroundColor Yellow -NoNewline
-    Write-Host "║" -ForegroundColor Red
-    Write-Host "  ║" -ForegroundColor Red -NoNewline
-    Write-Host "          " -ForegroundColor White -NoNewline
-    Write-Host "                  ║" -ForegroundColor Red
-    Write-Host "  ║" -ForegroundColor Red -NoNewline
-    Write-Host "                                        " -ForegroundColor Cyan -NoNewline
-    Write-Host "║" -ForegroundColor Red
-    Write-Host "  ║" -ForegroundColor Red -NoNewline
-    Write-Host "                                                                                  " -ForegroundColor Red -NoNewline
-    Write-Host "║" -ForegroundColor Red
-    Write-Host "  ╚══════════════════════════════════════════════════════════════════════════════════╝" -ForegroundColor Red
+    Write-Host ("  ╔" + ("═" * $BW) + "╗") -ForegroundColor Red
+    Write-NaughtyRow ""
+    Write-NaughtyRow "    o(>_<)o  Caught red-handed!" Magenta
+    Write-NaughtyRow "    $($criticalThreats.Count) confirmed $cheatWord found — naughty boy, naughty boy..." Yellow
+    Write-NaughtyRow "    You really thought no one would notice? Adorable. 💀" White
+    Write-NaughtyRow ""
+    Write-Host ("  ╚" + ("═" * $BW) + "╝") -ForegroundColor Red
 }
 
 # ── Footer
